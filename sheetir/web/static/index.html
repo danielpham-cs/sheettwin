@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SheetTwin · SheetIR</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #6b7280; --line: #e3e6eb;
+  --accent: #5b4bd6; --accent-soft: #ecebfb;
+  --input: #e8f1ff; --input-ink: #1f5fbf;
+  --output: #e6f6ec; --output-ink: #1d7a46;
+  --derived: #ffffff; --label-ink: #8a909c; --orphan: #f1f1f1;
+  --high: #d93838; --high-soft: #fdecec; --medium: #c98200; --medium-soft: #fdf4e3; --low: #7c8594;
+  --group: #b9b0f5; --prec: #13a3a3;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161b; --panel: #1c1f26; --text: #e6e8ec; --muted: #9aa1ad; --line: #2c313b;
+    --accent: #9d92ff; --accent-soft: #2a2748;
+    --input: #1b2a44; --input-ink: #8cb8ff; --output: #183326; --output-ink: #7fd8a4;
+    --derived: #1c1f26; --label-ink: #7d8492; --orphan: #24272e;
+    --high: #ff6b6b; --high-soft: #3a1f22; --medium: #f2b33d; --medium-soft: #3a3020; --low: #8b93a1;
+    --group: #5e54b8; --prec: #2cc5c5;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+button { font: inherit; cursor: pointer; }
+code, .mono { font-family: var(--mono); font-size: 12.5px; }
+a { color: var(--accent); cursor: pointer; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.app { display: grid; grid-template-columns: 250px 1fr; height: 100vh; }
+aside { background: var(--panel); border-right: 1px solid var(--line); padding: 16px; overflow: auto; }
+aside h1 { font-size: 17px; margin: 0 0 2px; }
+aside .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+.drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 18px 10px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; }
+.drop.over, .drop:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.btn { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 6px 12px; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.wb-list { list-style: none; padding: 0; margin: 16px 0 0; }
+.wb-list li { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; }
+.wb-list li:hover { background: var(--bg); }
+.wb-list li.active { background: var(--accent-soft); }
+.wb-list .n { font-weight: 600; word-break: break-all; }
+.wb-list .m { font-size: 12px; color: var(--muted); }
+.status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 18px; }
+
+main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+header { padding: 14px 20px 0; background: var(--panel); border-bottom: 1px solid var(--line); }
+.title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.title h2 { margin: 0; font-size: 18px; }
+.title .meta { color: var(--muted); font-size: 12px; }
+.stats { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.stat { background: var(--bg); border-radius: 8px; padding: 4px 10px; font-size: 12px; color: var(--muted); }
+.stat b { color: var(--text); font-size: 14px; margin-right: 3px; }
+.checks { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.chk { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); }
+.chk.pass { color: var(--output-ink); }
+.chk.warn { color: var(--medium); border-color: var(--medium); }
+.chk.fail { color: var(--high); border-color: var(--high); }
+.tabs { display: flex; gap: 2px; }
+.tab { border: 0; background: none; padding: 8px 14px; color: var(--muted); border-bottom: 2px solid transparent; }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.view { flex: 1; overflow: auto; padding: 16px 20px; display: none; }
+.view.active { display: block; }
+#view-sheet.active { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; padding: 12px 20px; overflow: hidden; }
+.empty { color: var(--muted); padding: 60px 20px; text-align: center; }
+
+.sheet-tabs { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+.sheet-tab { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 6px; padding: 3px 10px; font-size: 13px; }
+.sheet-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; border: 1px solid var(--line); background: var(--sw); }
+.grid-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); height: calc(100% - 64px); }
+table.grid { border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.grid th { position: sticky; top: 0; background: var(--bg); color: var(--muted); font-weight: 500; padding: 3px 6px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); z-index: 2; }
+.grid th.rh { position: sticky; left: 0; z-index: 1; text-align: right; }
+.grid thead th:first-child { left: 0; z-index: 3; }
+.grid td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 3px 6px; max-width: 220px; min-width: 56px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; position: relative; }
+.grid td.input { background: var(--input); color: var(--input-ink); }
+.grid td.output { background: var(--output); color: var(--output-ink); font-weight: 600; }
+.grid td.label { color: var(--label-ink); }
+.grid td.orphan { background: var(--orphan); color: var(--muted); text-decoration: line-through; }
+.grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.grid td .f { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+.grid td.iss-high { box-shadow: inset 0 0 0 2px var(--high); }
+.grid td.iss-medium { box-shadow: inset 0 0 0 2px var(--medium); }
+.grid td.in-group { background-image: linear-gradient(var(--group), var(--group)); background-size: 3px 100%; background-repeat: no-repeat; }
+.grid td.prec { outline: 2px dashed var(--prec); outline-offset: -3px; }
+.grid td.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.inspector { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: auto; padding: 14px; }
+.inspector h3 { margin: 0; font-size: 16px; }
+.inspector .sem { font-family: var(--mono); font-size: 12.5px; color: var(--accent); margin: 2px 0 10px; word-break: break-all; }
+.kv { display: grid; grid-template-columns: 80px 1fr; gap: 4px 8px; font-size: 13px; margin-bottom: 12px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; word-break: break-all; }
+.sec { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+.badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; font-weight: 600; }
+.badge.input { background: var(--input); color: var(--input-ink); }
+.badge.output { background: var(--output); color: var(--output-ink); }
+.badge.derived, .badge.label, .badge.orphan, .badge.empty { background: var(--bg); color: var(--muted); }
+.badge.high { background: var(--high-soft); color: var(--high); }
+.badge.medium { background: var(--medium-soft); color: var(--medium); }
+.badge.low { background: var(--bg); color: var(--low); }
+.issue { border-left: 3px solid var(--line); padding: 4px 8px; margin-bottom: 6px; font-size: 13px; }
+.issue.high { border-color: var(--high); } .issue.medium { border-color: var(--medium); }
+.tree div { font-size: 12.5px; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree .s { color: var(--muted); }
+
+table.list { border-collapse: collapse; width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: 13px; }
+.list th { text-align: left; background: var(--bg); color: var(--muted); font-weight: 500; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.list td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.list tr:last-child td { border-bottom: 0; }
+.filters { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.filters .btn.on { background: var(--accent-soft); border-color: var(--accent); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+.card h4 { margin: 0 0 4px; font-size: 15px; }
+.card .m { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+h3.h { font-size: 15px; margin: 4px 0 10px; }
+textarea.sql { width: 100%; min-height: 120px; font-family: var(--mono); font-size: 13px; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); resize: vertical; }
+.err { color: var(--high); font-size: 13px; margin: 8px 0; white-space: pre-wrap; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0 12px; }
+.hint { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>SheetTwin</h1>
+    <div class="sub">SheetIR viewer · runs locally, no data leaves this machine</div>
+    <label class="drop" id="drop">
+      Drop an .xlsx file here<br>or click to choose
+      <input type="file" id="file" accept=".xlsx,.xlsm" hidden>
+    </label>
+    <div class="row"><button class="btn" id="btn-sample">Load sample workbook</button></div>
+    <div class="status" id="status"></div>
+    <ul class="wb-list" id="wb-list"></ul>
+  </aside>
+
+  <main>
+    <header id="hdr" hidden>
+      <div class="title"><h2 id="wb-name"></h2><span class="meta" id="wb-meta"></span></div>
+      <div class="stats" id="stats"></div>
+      <div class="checks" id="checks"></div>
+      <nav class="tabs">
+        <button class="tab active" data-view="sheet">Sheets</button>
+        <button class="tab" data-view="issues">Issues</button>
+        <button class="tab" data-view="model">Model</button>
+        <button class="tab" data-view="sql">SQL</button>
+      </nav>
+    </header>
+
+    <div class="view active" id="view-empty"><div class="empty">Upload a workbook or load the sample to get started.</div></div>
+
+    <section class="view" id="view-sheet">
+      <div style="min-width:0; display:flex; flex-direction:column; overflow:hidden">
+        <div class="sheet-tabs" id="sheet-tabs"></div>
+        <div class="legend">
+          <span style="--sw:var(--input)">input</span>
+          <span style="--sw:var(--output)">output</span>
+          <span style="--sw:var(--derived)">derived (ƒ)</span>
+          <span style="--sw:var(--orphan)">orphan</span>
+          <span style="--sw:var(--high-soft)">issue</span>
+          <span style="--sw:var(--group)">same formula group</span>
+          <span style="--sw:transparent">dashed outline: direct precedent</span>
+        </div>
+        <div class="grid-wrap" id="grid-wrap"></div>
+      </div>
+      <div class="inspector" id="inspector"><div class="hint">Click a cell to see its formula, group, issues and calculation chain.</div></div>
+    </section>
+
+    <section class="view" id="view-issues">
+      <div class="filters" id="issue-filters"></div>
+      <div id="issues"></div>
+    </section>
+
+    <section class="view" id="view-model"></section>
+
+    <section class="view" id="view-sql">
+      <div class="row" id="presets"></div>
+      <textarea class="sql" id="sql" spellcheck="false"></textarea>
+      <div class="row"><button class="btn primary" id="run-sql">Run (Ctrl+Enter)</button><span class="hint">SELECT / WITH only; the database is opened read-only.</span></div>
+      <div id="sql-out"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const colName = (n) => { let s = ""; while (n) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; };
+const MAX_ROWS = 400, MAX_COLS = 52;
+
+const state = { wid: null, summary: null, sheet: null, cells: new Map(), selected: null, issueFilter: "all" };
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { msg = (await res.json()).detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+const status = (t) => { $("#status").textContent = t || ""; };
+
+function fmt(v, nf) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "number") {
+    if (nf && nf.includes("%")) return (v * 100).toFixed((nf.split(".")[1] || "").replace(/[^0]/g, "").length) + "%";
+    return Number.isInteger(v) ? v.toLocaleString() : (+v.toFixed(4)).toLocaleString(undefined, { maximumFractionDigits: 4 });
+  }
+  if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+  return String(v);
+}
+
+// ---------------- workbooks ----------------
+async function loadList() {
+  const list = await api("/api/workbooks");
+  $("#wb-list").innerHTML = list.map((w) => `
+    <li data-id="${w.id}" class="${w.id === state.wid ? "active" : ""}">
+      <div class="n">${esc(w.name)}</div>
+      <div class="m">${esc((w.built_at || "").replace("T", " "))} · ${w.high_issues} high-severity issues</div>
+    </li>`).join("");
+  $("#wb-list").querySelectorAll("li").forEach((li) => li.onclick = () => openWorkbook(li.dataset.id));
+  return list;
+}
+
+async function ingest(promise) {
+  status("Parsing…");
+  try {
+    const r = await promise;
+    status(`Done: ${r.counts.formula_cells} formulas → ${r.counts.formula_groups} groups`);
+    await loadList();
+    await openWorkbook(r.id);
+  } catch (e) { status("Error: " + e.message); }
+}
+function uploadFile(f) {
+  const fd = new FormData(); fd.append("file", f);
+  ingest(api("/api/workbooks", { method: "POST", body: fd }));
+}
+$("#file").onchange = (e) => e.target.files[0] && uploadFile(e.target.files[0]);
+$("#btn-sample").onclick = () => ingest(api("/api/workbooks/sample", { method: "POST" }));
+const drop = $("#drop");
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); e.dataTransfer.files[0] && uploadFile(e.dataTransfer.files[0]); };
+
+async function openWorkbook(id) {
+  state.wid = id;
+  const s = state.summary = await api(`/api/workbooks/${id}/summary`);
+  document.querySelectorAll("#wb-list li").forEach((li) => li.classList.toggle("active", li.dataset.id === id));
+  $("#hdr").hidden = false;
+  $("#wb-name").textContent = s.name;
+  $("#wb-meta").textContent = `sha256 ${s.sha256.slice(0, 12)} · build ${(s.built_at || "").replace("T", " ")}`;
+  const c = s.counts;
+  $("#stats").innerHTML = [["cells", "cells"], ["formulas", "formulas"], ["groups", "formula groups"], ["tables", "tables"],
+    ["params", "parameters"], ["outputs", "outputs"]].map(([k, l]) => `<span class="stat"><b>${c[k]}</b>${l}</span>`).join("");
+  $("#checks").innerHTML = s.checks.map((k) => {
+    const cls = k.passed ? "pass" : (k.severity === "error" ? "fail" : "warn");
+    return `<span class="chk ${cls}" title="${esc(k.detail)}">${k.passed ? "✓" : cls === "fail" ? "✗" : "!"} ${esc(k.name)}</span>`;
+  }).join("");
+  state.selected = null;
+  $("#inspector").innerHTML = `<div class="hint">Click a cell to see its formula, group, issues and calculation chain.</div>`;
+  $("#sheet-tabs").innerHTML = s.sheets.map((n) => `<button class="sheet-tab" data-s="${esc(n)}">${esc(n)}</button>`).join("");
+  $("#sheet-tabs").querySelectorAll("button").forEach((b) => b.onclick = () => openSheet(b.dataset.s));
+  showView(currentView() === "empty" ? "sheet" : currentView());
+  await openSheet(s.sheets[0]);
+}
+
+// ---------------- views ----------------
+const currentView = () => (document.querySelector(".view.active")?.id || "view-empty").slice(5);
+function showView(v) {
+  document.querySelectorAll(".view").forEach((el) => el.classList.toggle("active", el.id === "view-" + v));
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === v));
+  if (v === "issues") renderIssues();
+  if (v === "model") renderModel();
+  if (v === "sql") initSql();
+}
+document.querySelectorAll(".tab").forEach((t) => t.onclick = () => showView(t.dataset.view));
+
+// ---------------- sheet grid ----------------
+async function openSheet(name) {
+  state.sheet = name;
+  document.querySelectorAll(".sheet-tab").forEach((b) => b.classList.toggle("active", b.dataset.s === name));
+  const data = await api(`/api/workbooks/${state.wid}/sheet?name=${encodeURIComponent(name)}`);
+  state.cells = new Map(data.cells.map((c) => [c.cell_id, c]));
+  const issues = {};
+  for (const i of data.issues) {
+    if (!issues[i.cell_id] || i.severity === "high") issues[i.cell_id] = i.severity;
+  }
+  const byPos = new Map(data.cells.map((c) => [c.row + ":" + c.col, c]));
+  const maxR = Math.min(Math.max(1, ...data.cells.map((c) => c.row)), MAX_ROWS);
+  const maxC = Math.min(Math.max(1, ...data.cells.map((c) => c.col)), MAX_COLS);
+  let h = `<table class="grid"><thead><tr><th></th>`;
+  for (let c = 1; c <= maxC; c++) h += `<th>${colName(c)}</th>`;
+  h += `</tr></thead><tbody>`;
+  for (let r = 1; r <= maxR; r++) {
+    h += `<tr><th class="rh">${r}</th>`;
+    for (let c = 1; c <= maxC; c++) {
+      const cell = byPos.get(r + ":" + c);
+      if (!cell) { h += `<td></td>`; continue; }
+      const cls = [cell.role];
+      if (typeof (cell.vtype === "formula" ? cell.cached : cell.value) === "number") cls.push("num");
+      if (issues[cell.cell_id] === "high" || issues[cell.cell_id] === "medium") cls.push("iss-" + issues[cell.cell_id]);
+      let body;
+      if (cell.vtype === "formula") {
+        body = cell.cached !== null && cell.cached !== undefined ? esc(fmt(cell.cached, cell.number_format)) : `<span class="f">ƒ ${esc(cell.formula.slice(1))}</span>`;
+      } else body = esc(fmt(cell.value, cell.number_format));
+      h += `<td class="${cls.join(" ")}" data-id="${esc(cell.cell_id)}" title="${esc(cell.semantic || cell.a1)}">${body}</td>`;
+    }
+    h += `</tr>`;
+  }
+  h += `</tbody></table>`;
+  const capped = data.cells.some((c) => c.row > MAX_ROWS || c.col > MAX_COLS);
+  $("#grid-wrap").innerHTML = h + (capped ? `<div class="hint" style="padding:8px">Showing only the first ${MAX_ROWS} rows × ${MAX_COLS} columns.</div>` : "");
+  $("#grid-wrap").querySelectorAll("td[data-id]").forEach((td) => td.onclick = () => selectCell(td.dataset.id));
+}
+
+function sheetOf(cellId) {
+  const i = cellId.lastIndexOf("!");
+  let s = cellId.slice(0, i);
+  if (s.startsWith("'")) s = s.slice(1, -1).replace(/''/g, "'");
+  return s;
+}
+
+async function goToCell(cellId) {
+  showView("sheet");
+  const sh = sheetOf(cellId);
+  if (sh !== state.sheet) await openSheet(sh);
+  await selectCell(cellId);
+  document.querySelector(`td[data-id="${CSS.escape(cellId)}"]`)?.scrollIntoView({ block: "center", inline: "center" });
+}
+
+async function selectCell(id) {
+  state.selected = id;
+  const d = await api(`/api/workbooks/${state.wid}/cell?id=${encodeURIComponent(id)}`);
+  const c = d.cell;
+  const direct = new Set(d.precedents.filter((p) => p.depth === 1).map((p) => p.cell_id));
+  document.querySelectorAll("#grid-wrap td[data-id]").forEach((td) => {
+    const cell = state.cells.get(td.dataset.id);
+    td.classList.toggle("sel", td.dataset.id === id);
+    td.classList.toggle("in-group", !!(c.group_id && cell && cell.group_id === c.group_id && d.group.n_cells > 1));
+    td.classList.toggle("prec", direct.has(td.dataset.id));
+  });
+
+  const link = (cid, label) => `<a data-go="${esc(cid)}">${esc(label || cid)}</a>`;
+  let h = `<h3>${esc(c.cell_id)} <span class="badge ${esc(c.role)}">${esc(c.role)}</span></h3>`;
+  h += `<div class="sem">${esc(c.semantic || "—")}</div><dl class="kv">`;
+  if (c.vtype === "formula") {
+    h += `<dt>Formula</dt><dd><code>${esc(c.formula)}</code></dd>`;
+    h += `<dt>R1C1</dt><dd><code>${esc(c.r1c1)}</code></dd>`;
+    h += `<dt>Cached</dt><dd>${c.cached === null ? '<span class="hint">none (workbook was not recalculated by Excel)</span>' : esc(fmt(c.cached, c.number_format))}</dd>`;
+  } else if (c.vtype) {
+    h += `<dt>Value</dt><dd>${esc(fmt(c.value, c.number_format))}</dd><dt>Type</dt><dd>${esc(c.vtype)}</dd>`;
+  }
+  if (d.group) {
+    h += `<dt>Group</dt><dd>#${d.group.group_id} · ${d.group.n_cells} cells (${link(d.group.anchor)} → ${link(d.group.last)})</dd>`;
+  }
+  h += `</dl>`;
+  if (d.issues.length) {
+    h += `<div class="sec">Issues</div>` + d.issues.map((i) =>
+      `<div class="issue ${esc(i.severity)}"><span class="badge ${esc(i.severity)}">${esc(i.kind)}</span><div>${esc(i.detail)}</div></div>`).join("");
+  }
+  if (d.precedents.length) {
+    const shown = d.precedents.slice(0, 150);
+    h += `<div class="sec">Depends on (${d.precedents.length})</div><div class="tree">` + shown.map((p) =>
+      `<div style="padding-left:${(p.depth - 1) * 14}px">${link(p.cell_id)} <span class="s">${esc(p.semantic || "")}</span></div>`).join("") +
+      (d.precedents.length > shown.length ? `<div class="s">… and ${d.precedents.length - shown.length} more cells</div>` : "") + `</div>`;
+  }
+  if (d.dependents.length) {
+    h += `<div class="sec">Used by (${d.dependents.length})</div><div class="tree">` + d.dependents.slice(0, 80).map((p) =>
+      `<div>${link(p.cell_id)} <span class="s">${esc(p.semantic || "")}</span></div>`).join("") + `</div>`;
+  }
+  $("#inspector").innerHTML = h;
+  $("#inspector").querySelectorAll("[data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
+}
+
+// ---------------- issues ----------------
+async function renderIssues() {
+  const all = await api(`/api/workbooks/${state.wid}/issues`);
+  const counts = { all: all.length, high: 0, medium: 0, low: 0 };
+  all.forEach((i) => counts[i.severity]++);
+  $("#issue-filters").innerHTML = ["all", "high", "medium", "low"].map((k) =>
+    `<button class="btn ${state.issueFilter === k ? "on" : ""}" data-k="${k}">${k} (${counts[k]})</button>`).join("");
+  $("#issue-filters").querySelectorAll("button").forEach((b) => b.onclick = () => { state.issueFilter = b.dataset.k; renderIssues(); });
+  const rows = all.filter((i) => state.issueFilter === "all" || i.severity === state.issueFilter);
+  $("#issues").innerHTML = rows.length ? `<table class="list"><thead><tr><th>Severity</th><th>Kind</th><th>Cell</th><th>Meaning</th><th>Detail</th></tr></thead><tbody>` +
+    rows.map((i) => `<tr><td><span class="badge ${esc(i.severity)}">${esc(i.severity)}</span></td><td>${esc(i.kind)}</td>
+      <td>${i.cell_id ? `<a data-go="${esc(i.cell_id)}">${esc(i.cell_id)}</a>` : ""}</td>
+      <td class="mono">${esc(i.semantic || "")}</td><td>${esc(i.detail)}</td></tr>`).join("") + `</tbody></table>`
+    : `<div class="empty">No issues found.</div>`;
+  $("#issues").querySelectorAll("[data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
+}
+
+// ---------------- model ----------------
+async function renderModel() {
+  const m = await api(`/api/workbooks/${state.wid}/model`);
+  const go = (cid) => `<a data-go="${esc(cid)}">${esc(cid)}</a>`;
+  let h = `<h3 class="h">Parameters (${m.params.length})</h3>`;
+  h += m.params.length ? `<table class="list"><thead><tr><th>Name</th><th>Source label</th><th>Value</th><th>Unit</th><th>Domain</th><th>Cell</th></tr></thead><tbody>` +
+    m.params.map((p) => `<tr><td class="mono">params.${esc(p.name)}</td><td>${esc(p.label || "")}</td><td>${esc(fmt(p.value))}</td>
+      <td>${esc(p.unit || "")}</td><td class="mono">${p.domain ? esc(`${p.domain.type} ${p.domain.operator || ""} ${p.domain.formula1 ?? ""}${p.domain.formula2 ? "…" + p.domain.formula2 : ""}`) : ""}</td>
+      <td>${go(p.cell_id)}</td></tr>`).join("") + `</tbody></table>` : `<div class="hint">No parameters found.</div>`;
+
+  h += `<h3 class="h" style="margin-top:24px">Tables (${m.tables.length})</h3>`;
+  for (const t of m.tables) {
+    h += `<div class="card"><h4>${esc(t.name)}</h4><div class="m">${esc(t.sheet)} · ${t.n_rows} rows · ${esc(t.source)}${t.kind !== "data" ? " · " + esc(t.kind) : ""}${t.key_col ? " · key: column " + colName(t.key_col) : ""}${t.total_row ? " · total row " + t.total_row : ""}</div>
+      <table class="list"><thead><tr><th>Column</th><th>Field</th><th>Header</th><th>Unit</th><th>Kind</th><th>Formula (R1C1)</th></tr></thead><tbody>` +
+      t.fields.map((f) => `<tr><td>${colName(f.col)}</td><td class="mono">${esc(f.name)}</td><td>${esc(f.header)}</td><td>${esc(f.unit || "")}</td>
+        <td>${f.kind === "derived" ? "ƒ derived" : "data"}</td><td class="mono">${esc(f.r1c1 || "")}</td></tr>`).join("") + `</tbody></table></div>`;
+  }
+
+  if (m.outputs.length) {
+    h += `<h3 class="h">Outputs outside tables (${m.outputs.length})</h3><table class="list"><thead><tr><th>Cell</th><th>Name</th><th>Formula</th></tr></thead><tbody>` +
+      m.outputs.map((o) => `<tr><td>${go(o.cell_id)}</td><td class="mono">${esc(o.semantic || "")}</td><td class="mono">${esc(o.formula)}</td></tr>`).join("") + `</tbody></table>`;
+  }
+
+  h += `<h3 class="h" style="margin-top:24px">Formula groups (${m.groups.length})</h3><table class="list"><thead><tr><th>#</th><th>Range</th><th>Cells</th><th>Axis</th><th>R1C1</th></tr></thead><tbody>` +
+    m.groups.map((g) => `<tr><td>${g.group_id}</td><td>${go(g.anchor)}${g.n_cells > 1 ? " → " + go(g.last) : ""}</td><td>${g.n_cells}</td><td>${esc(g.axis)}</td><td class="mono">${esc(g.r1c1)}</td></tr>`).join("") + `</tbody></table>`;
+  $("#view-model").innerHTML = h;
+  $("#view-model").querySelectorAll("[data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
+}
+
+// ---------------- SQL ----------------
+const PRESETS = {
+  "Hard-coded constants": "SELECT value, COUNT(*) AS n_cells, MIN(cell_id) AS example\nFROM literals\nWHERE value NOT IN (0, 1, 100) AND (function IS NULL OR function NOT IN ('VLOOKUP','INDEX','MATCH','ROUND'))\nGROUP BY value ORDER BY n_cells DESC",
+  "High-severity issues": "SELECT cell_id, kind, detail FROM issues WHERE severity = 'high'",
+  "Calculation chain of a cell": "WITH RECURSIVE trace(cell_id, depth) AS (\n  SELECT 'Quote!J2', 0\n  UNION SELECT d.src_cell, t.depth + 1 FROM deps d JOIN trace t ON d.dst_cell = t.cell_id\n)\nSELECT t.cell_id, MIN(depth) AS depth, c.semantic, c.formula\nFROM trace t LEFT JOIN cells c USING(cell_id)\nGROUP BY t.cell_id ORDER BY depth",
+  "Most-used parameters": "SELECT p.name, COUNT(DISTINCT d.dst_cell) AS direct_dependents\nFROM params p JOIN deps d ON d.src_cell = p.cell_id\nGROUP BY p.name ORDER BY direct_dependents DESC",
+  "Schema": "SELECT name, sql FROM sqlite_master WHERE type IN ('table','view') ORDER BY name",
+};
+function initSql() {
+  if (!$("#presets").children.length) {
+    $("#presets").innerHTML = Object.keys(PRESETS).map((k) => `<button class="btn" data-k="${esc(k)}">${esc(k)}</button>`).join("");
+    $("#presets").querySelectorAll("button").forEach((b) => b.onclick = () => { $("#sql").value = PRESETS[b.dataset.k]; runSql(); });
+    $("#sql").value = PRESETS["Hard-coded constants"];
+    $("#sql").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) runSql(); };
+    $("#run-sql").onclick = runSql;
+  }
+}
+async function runSql() {
+  try {
+    const r = await api(`/api/workbooks/${state.wid}/sql`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: $("#sql").value }) });
+    $("#sql-out").innerHTML = `<div class="hint" style="margin-bottom:6px">${r.rows.length} rows${r.truncated ? " (truncated)" : ""}</div><table class="list"><thead><tr>` +
+      r.columns.map((c) => `<th>${esc(c)}</th>`).join("") + `</tr></thead><tbody>` +
+      r.rows.map((row) => `<tr>${row.map((v) => `<td class="mono">${esc(v)}</td>`).join("")}</tr>`).join("") + `</tbody></table>`;
+  } catch (e) { $("#sql-out").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+
+// ---------------- boot ----------------
+loadList().then((list) => list.length && openWorkbook(list[0].id)).catch((e) => status("Error: " + e.message));
+</script>
+</body>
+</html>
