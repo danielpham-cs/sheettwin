@@ -1,5 +1,9 @@
 """Local web UI over SheetIR databases (FastAPI). Nothing is fetched from the internet.
 
+Pages:
+    /         chat UI, the static build of frontend/ in static/app (falls back to the legacy page if not built)
+    /legacy   structure browser, static/index.html
+
 Layout of the data directory (default ./data, override with SHEETIR_DATA):
     data/<id>/<original file name>.xlsx   copy of the upload (the user's file is never touched)
     data/<id>/ir.db                       SheetIR database
@@ -8,23 +12,31 @@ where <id> is the first 12 hex chars of the workbook's SHA-256.
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import json
 import os
 import re
 import sqlite3
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ..build import build_ir
 from ..sample import make_quotation
 from ..store import TRACE_SQL
+from . import graph
+from .charts import charts
+from .chat import answer, find_cells
 
 STATIC = Path(__file__).parent / "static"
+CHAT_UI = STATIC / "app"  # written by `npm run build` in frontend/
 _ID_RE = re.compile(r"^[0-9a-f]{12}$")
 MAX_SQL_ROWS = 500
 
@@ -76,8 +88,8 @@ def _ingest(data: bytes, filename: str) -> dict:
     return {"id": wid, "counts": res.counts}
 
 
-@app.get("/", response_class=HTMLResponse)
-def index():
+@app.get("/legacy", response_class=HTMLResponse)
+def legacy():
     return (STATIC / "index.html").read_text(encoding="utf-8")
 
 
@@ -214,3 +226,93 @@ def run_sql(wid: str, req: SqlRequest):
         raise HTTPException(400, str(exc)) from exc
     return {"columns": cols, "rows": [list(r) for r in rows[:MAX_SQL_ROWS]],
             "truncated": len(rows) > MAX_SQL_ROWS}
+
+
+class ChatRequest(BaseModel):
+    message: str
+    lang: str = "zh"  # reply language: zh | en
+
+
+@app.post("/api/workbooks/{wid}/chat")
+def chat(wid: str, req: ChatRequest):
+    return answer(_connect(wid), req.message, req.lang)
+
+
+@app.get("/api/workbooks/{wid}/graph")
+def dependency_graph(wid: str, cell: str | None = None, up: int = 3, down: int = 2):
+    """Block-level overview, or the neighbourhood of one cell when `cell` is given."""
+    con = _connect(wid)
+    if not cell:
+        return graph.overview(con)
+    found = find_cells(con, cell)
+    if not found:
+        raise HTTPException(400, f"expected a sheet-qualified cell like Quote!J13, got {cell!r}")
+    return graph.focus(con, found[0], max(0, min(up, 10)), max(0, min(down, 10)))
+
+
+@app.get("/api/workbooks/{wid}/charts")
+def chart_data(wid: str):
+    """Structure/audit statistics and table rows for the charts view."""
+    return charts(_connect(wid))
+
+
+# Files derived from the workbook. CSV/JSON exports are generated on request from ir.db.
+EXPORTS = {
+    "ir.db": ("SheetIR 資料庫", "SQLite", "application/vnd.sqlite3"),
+    "model.json": ("語意模型", "JSON", "application/json"),
+    "cells.csv": ("儲存格清單", "CSV", "text/csv"),
+    "issues.csv": ("問題清單", "CSV", "text/csv"),
+    "formula_groups.csv": ("公式群組", "CSV", "text/csv"),
+}
+CSV_SQL = {
+    "cells.csv": "SELECT cell_id, sheet, a1, vtype, role, semantic, value, cached, formula, r1c1, group_id "
+                 "FROM cells ORDER BY sheet, row, col",
+    "issues.csv": "SELECT cell_id, group_id, kind, severity, detail FROM issues ORDER BY issue_id",
+    "formula_groups.csv": "SELECT group_id, sheet, axis, anchor, last, n_cells, r1c1 FROM formula_groups "
+                          "ORDER BY group_id",
+}
+
+
+def _export_bytes(wid: str, name: str) -> bytes:
+    if name == "model.json":
+        return json.dumps(model(wid), ensure_ascii=False, indent=2, default=str).encode("utf-8")
+    con = _connect(wid)
+    cur = con.execute(CSV_SQL[name])
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow([d[0] for d in cur.description])
+    w.writerows(cur.fetchall())
+    return ("﻿" + buf.getvalue()).encode("utf-8")  # BOM so Excel opens UTF-8 correctly
+
+
+@app.get("/api/workbooks/{wid}/exports")
+def list_exports(wid: str):
+    db = _db_path(wid)
+    out = [{"name": src.name, "label": "原始活頁簿", "format": "XLSX", "size": src.stat().st_size, "source": True}
+           for src in db.parent.iterdir() if src.suffix.lower() in (".xlsx", ".xlsm")]
+    for name, (label, fmt, _) in EXPORTS.items():
+        size = db.stat().st_size if name == "ir.db" else len(_export_bytes(wid, name))
+        out.append({"name": name, "label": label, "format": fmt, "size": size, "source": False})
+    return out
+
+
+@app.get("/api/workbooks/{wid}/exports/{name}")
+def download_export(wid: str, name: str):
+    db = _db_path(wid)
+    stem = Path(dict(_connect(wid).execute("SELECT key, value FROM meta").fetchall())["source"]).stem
+    if name == "ir.db":
+        return FileResponse(db, media_type=EXPORTS[name][2], filename=f"{stem}.sheetir.db")
+    if name in EXPORTS:
+        return Response(_export_bytes(wid, name), media_type=EXPORTS[name][2],
+                        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(f'{stem}.{name}')}"})
+    src = db.parent / Path(name).name
+    if src.suffix.lower() in (".xlsx", ".xlsm") and src.is_file():
+        return FileResponse(src, filename=src.name)
+    raise HTTPException(404, "no such export")
+
+
+# Registered last so the API routes above take precedence over the static mount.
+if (CHAT_UI / "index.html").exists():
+    app.mount("/", StaticFiles(directory=CHAT_UI, html=True), name="chat-ui")
+else:
+    app.add_api_route("/", legacy, response_class=HTMLResponse, include_in_schema=False)
