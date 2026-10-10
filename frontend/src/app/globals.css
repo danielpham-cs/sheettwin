@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+:root {
+  --background: #07080d;
+  --foreground: #e8eaf2;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, Consolas, monospace;
+
+  --animate-aurora: aurora 18s ease-in-out infinite alternate;
+  --animate-float-in: float-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-shimmer: shimmer 2.4s linear infinite;
+}
+
+@keyframes aurora {
+  0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  50% { transform: translate3d(6%, -4%, 0) scale(1.15) rotate(8deg); }
+  100% { transform: translate3d(-5%, 5%, 0) scale(0.95) rotate(-6deg); }
+}
+
+@keyframes float-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+html, body { height: 100%; }
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+::selection { background: rgb(139 92 246 / 0.45); }
+
+/* Thin, quiet scrollbars */
+* { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.12) transparent; }
+
+/* Gradient border that glows on focus (composer, cards) */
+.glow-border {
+  position: relative;
+  isolation: isolate;
+}
+.glow-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, rgb(139 92 246 / 0.55), rgb(34 211 238 / 0.35), rgb(236 72 153 / 0.45));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.35;
+  transition: opacity 0.25s;
+  pointer-events: none;
+  z-index: -1;
+}
+.glow-border:focus-within::before, .glow-border:hover::before { opacity: 1; }
+
+.text-gradient {
+  background: linear-gradient(100deg, #c4b5fd 0%, #67e8f9 45%, #f0abfc 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Markdown inside assistant bubbles */
+.md { line-height: 1.7; font-size: 14.5px; }
+.md > * + * { margin-top: 0.75em; }
+.md h3 { font-size: 15px; font-weight: 600; color: #f4f4f8; margin-top: 1.1em; }
+.md h3:first-child { margin-top: 0; }
+.md ul { list-style: none; padding-left: 0; }
+.md ul li { position: relative; padding-left: 1.1em; }
+.md ul li::before { content: ""; position: absolute; left: 0.2em; top: 0.72em; width: 5px; height: 5px; border-radius: 99px; background: linear-gradient(135deg, #a78bfa, #22d3ee); }
+.md strong { color: #fff; font-weight: 600; }
+.md hr { border: 0; height: 1px; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.15), transparent); margin: 1.2em 0; }
+.md code { font-family: var(--font-mono); font-size: 12.5px; padding: 0.1em 0.4em; border-radius: 6px; background: rgb(139 92 246 / 0.14); color: #d8ccff; border: 1px solid rgb(139 92 246 / 0.2); }
+.md .table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid rgb(255 255 255 / 0.08); background: rgb(255 255 255 / 0.02); }
+.md table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.md th { text-align: left; font-weight: 500; color: #a1a6b8; background: rgb(255 255 255 / 0.04); padding: 8px 12px; white-space: nowrap; }
+.md td { padding: 7px 12px; border-top: 1px solid rgb(255 255 255 / 0.06); vertical-align: top; }
+.md tr:hover td { background: rgb(255 255 255 / 0.025); }
