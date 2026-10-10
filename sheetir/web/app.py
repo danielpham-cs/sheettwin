@@ -1,7 +1,8 @@
 """Local web UI over SheetIR databases (FastAPI). Nothing is fetched from the internet.
 
 Pages:
-    /         chat UI, the static build of frontend/ in static/app (falls back to the legacy page if not built)
+    /         landing page and, at /app/, the chat UI: the static build of frontend/ in static/app
+              (falls back to the legacy page if not built)
     /legacy   structure browser, static/index.html
 
 Layout of the data directory (default ./data, override with SHEETIR_DATA):

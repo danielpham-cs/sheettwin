@@ -2,6 +2,7 @@
 
 import { ChartPie, FilePlus2, FileSpreadsheet, FolderOutput, Languages, MessageSquareText, Network, Search, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
+import Link from "next/link";
 import { useState } from "react";
 import type { Workbook } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -50,9 +51,9 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
     <div className="flex h-full shrink-0">
       {/* Icon rail */}
       <nav className="flex w-[72px] flex-col items-center gap-3 border-r border-white/5 bg-black/30 py-5 backdrop-blur-xl">
-        <div className="mb-3 grid size-10 place-items-center rounded-xl bg-white/5 ring-1 ring-white/10">
+        <Link href="/" aria-label="SheetTwin" title="SheetTwin" className="mb-3 grid size-10 place-items-center rounded-xl bg-white/5 ring-1 ring-white/10 transition hover:bg-white/10">
           <Sparkles className="size-5 text-violet-300" />
-        </div>
+        </Link>
         <RailButton label={t.nav.newData} onClick={onNewData} accent>
           <FilePlus2 className="size-5" />
         </RailButton>
