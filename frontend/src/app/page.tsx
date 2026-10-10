@@ -2,9 +2,9 @@
 
 import dynamic from "next/dynamic";
 
-// Client-only: chat history lives in localStorage, which the server cannot read.
-const App = dynamic(() => import("@/components/App"), { ssr: false });
+// Client-only, like the app: the language choice lives in localStorage.
+const Landing = dynamic(() => import("@/components/Landing"), { ssr: false });
 
 export default function Home() {
-  return <App />;
+  return <Landing />;
 }

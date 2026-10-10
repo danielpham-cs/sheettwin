@@ -5,7 +5,8 @@ converted from them. All data comes from the FastAPI backend.
 
 | Command | What it does |
 |---|---|
-| `npm run build` | Static export to `out/`, then copied to `../sheetir/web/static/app`; `sheetir serve` serves it at `/` |
+| `npm run build` | Static export to `out/`, then copied to `../sheetir/web/static/app`; `sheetir serve` serves the landing page at `/` and the app at `/app/` |
+| `npm run screenshots` | Re-shoot `public/screenshots/` for the landing page (needs a running backend and an installed Edge/Chrome) |
 | `npm run dev` | Dev server on http://localhost:3000 with hot reload; `/api/*` is proxied to the backend |
 
 Both need the backend running (`uv run sheetir serve` from `sheettwin/`). Set `SHEETIR_API` if it is not on
@@ -13,6 +14,7 @@ Both need the backend running (`uv run sheetir serve` from `sheettwin/`). Set `S
 
 | Part | File |
 |---|---|
+| Landing page (`/`) and its copy | `src/components/Landing.tsx`, `src/lib/landing-i18n.ts` |
 | Left rail: 新增資料 / 轉換檔案, workbook list | `src/components/Sidebar.tsx` |
 | Upload dialog (drag and drop, sample workbook) | `src/components/UploadDialog.tsx` |
 | Converted files panel with CSV/JSON preview and downloads | `src/components/ExportsPanel.tsx` |

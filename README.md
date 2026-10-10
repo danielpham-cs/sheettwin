@@ -69,7 +69,8 @@ uv run sheetir serve         # http://127.0.0.1:8765
 
 | URL | Page |
 |---|---|
-| `http://127.0.0.1:8765/` | Chat UI: talk to a workbook, upload new data, browse converted files |
+| `http://127.0.0.1:8765/` | Landing page: what SheetTwin does, with screenshots (for demos and reviewers) |
+| `http://127.0.0.1:8765/app/` | Chat UI: talk to a workbook, upload new data, browse converted files |
 | `http://127.0.0.1:8765/legacy` | Structure browser: grid, issues, model, SQL |
 
 The built chat UI is not committed, so after cloning you need the `npm run build` step. Without it, `/`
@@ -128,7 +129,20 @@ As a side effect, SheetIR also flags `Quote!E17` as an orphan: because `G17` was
 | `--port` | `8765` | |
 | `--data` | `data` | Where uploads and IR databases are stored |
 
-**Chat UI (`/`)**, built from `frontend/` (Next.js, React, Tailwind):
+**Landing page (`/`)**: the product pitch, written for reviewers and demos: the problem, the four features with
+screenshots, how it works (L0–L3) and the issues found in the sample workbook. "Try the sample" opens `/app/?sample=1`,
+which loads the sample workbook. Copy is in `frontend/src/lib/landing-i18n.ts`.
+
+The screenshots in `frontend/public/screenshots/{zh,en}/` are committed. After changing the UI, re-shoot them with the
+app built and a backend on an empty data folder (so the sidebar shows only the sample):
+
+```bash
+uv run sheetir serve --data <empty folder>
+cd frontend && npm run screenshots   # uses an installed Edge or Chrome
+npm run build                        # include the new screenshots
+```
+
+**Chat UI (`/app/`)**, built from `frontend/` (Next.js, React, Tailwind):
 
 | Part | Contents |
 |---|---|
@@ -395,7 +409,7 @@ SheetTwin/
 │       └── static/
 │           ├── index.html     structure browser (/legacy)
 │           └── app/           chat UI build output (git-ignored)
-├── frontend/          chat UI source (Next.js); `npm run build` copies it into static/app
+├── frontend/          landing page + chat UI source (Next.js); `npm run build` copies it into static/app
 └── tests/
     ├── test_refs.py   reference parsing and R1C1 round trips
     ├── test_build.py  end-to-end build on the sample, Excel Tables, cycles

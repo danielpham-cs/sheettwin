@@ -57,7 +57,13 @@ function Shell() {
   );
 
   useEffect(() => {
-    refresh();
+    // The landing page's "try the sample" button links to /app/?sample=1.
+    if (new URLSearchParams(window.location.search).has("sample")) {
+      window.history.replaceState(null, "", window.location.pathname);
+      api.sample().then(({ id }) => refresh(id), () => refresh());
+    } else {
+      refresh();
+    }
   }, [refresh]);
 
   useEffect(() => {
@@ -143,6 +149,7 @@ function Shell() {
             onSend={send}
             onNewData={() => setUploadOpen(true)}
             onShowGraph={(cell) => { setGraphFocus(cell); setView("graph"); }}
+            onNavigate={(to) => (to === "exports" ? setPanel("exports") : setView(to))}
           />
         )}
       </main>

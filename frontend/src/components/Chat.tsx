@@ -1,6 +1,8 @@
 "use client";
 
-import { AlertTriangle, ArrowUp, Bot, Crosshair, ListTree, Network, Settings2, Table2, User } from "lucide-react";
+import {
+  AlertTriangle, ArrowUp, Bot, ChartPie, Crosshair, FolderOutput, ListTree, Lock, MessageSquareText, Network, Settings2, Table2, User,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -13,6 +15,16 @@ export type Message = { id: string; role: "user" | "assistant"; content: string;
 const CELL_RE = /^(?:'[^']+'|[A-Za-z_][\w.]*)![A-Z]{1,3}\d+$/;
 
 const SUGGESTION_ICONS = [ListTree, AlertTriangle, Settings2, Table2];
+
+// Same icons and order as the left rail, so the description doubles as a map of it.
+const FEATURES = [
+  { key: "chat", icon: MessageSquareText, tint: "text-violet-300" },
+  { key: "graph", icon: Network, tint: "text-cyan-300" },
+  { key: "charts", icon: ChartPie, tint: "text-fuchsia-300" },
+  { key: "exports", icon: FolderOutput, tint: "text-emerald-300" },
+] as const;
+
+export type Destination = (typeof FEATURES)[number]["key"];
 
 function Markdown({ text, onCell }: { text: string; onCell: (id: string) => void }) {
   const { t } = useI18n();
@@ -67,16 +79,18 @@ type Props = {
   onSend: (text: string) => void;
   onNewData: () => void;
   onShowGraph: (cell: string) => void;
+  onNavigate: (to: Exclude<Destination, "chat">) => void;
 };
 
-export function Chat({ summary, messages, pending, onSend, onNewData, onShowGraph }: Props) {
+export function Chat({ summary, messages, pending, onSend, onNewData, onShowGraph, onNavigate }: Props) {
   const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+    // Follow new messages; the welcome screen (no messages) stays at the top.
+    if (messages.length) scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages, pending]);
 
   useEffect(() => {
@@ -138,13 +152,40 @@ export function Chat({ summary, messages, pending, onSend, onNewData, onShowGrap
               <h3 className="text-3xl font-semibold tracking-tight">
                 {summary ? t.chat.askAbout(<span className="text-gradient">{summary.name}</span>) : <span className="text-gradient">{t.chat.hero}</span>}
               </h3>
-              <p className="mt-3 max-w-md text-sm text-zinc-400">
-                {summary
-                  ? t.chat.introReady
-                  : t.chat.introEmpty}
-              </p>
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 }}
+                className="mt-6 w-full rounded-3xl border border-white/[0.07] bg-white/[0.025] p-5 text-left backdrop-blur"
+              >
+                <p className="text-sm leading-relaxed text-zinc-300">{t.chat.about.desc}</p>
+                <div className="mt-4 grid gap-1 sm:grid-cols-2">
+                  {FEATURES.map(({ key, icon: Icon, tint }) => {
+                    const f = t.chat.about.features[key];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => (key === "chat" ? box.current?.focus() : onNavigate(key))}
+                        className="group flex items-start gap-3 rounded-2xl p-2.5 text-left transition hover:bg-white/[0.05]"
+                      >
+                        <span className={`grid size-8 shrink-0 place-items-center rounded-xl bg-white/5 ring-1 ring-white/10 ${tint}`}>
+                          <Icon className="size-4" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-zinc-100">{f.title}</span>
+                          <span className="block text-xs leading-relaxed text-zinc-500 group-hover:text-zinc-400">{f.body}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-3 flex items-center gap-2 border-t border-white/5 pt-3 text-xs text-zinc-500">
+                  <Lock className="size-3.5 shrink-0 text-emerald-300/80" />
+                  {t.chat.about.privacy}
+                </p>
+              </motion.div>
               {summary ? (
-                <div className="mt-10 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="mt-4 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
                   {t.chat.suggestions.map(({ title, prompt }, i) => {
                     const Icon = SUGGESTION_ICONS[i];
                     return (
@@ -170,7 +211,7 @@ export function Chat({ summary, messages, pending, onSend, onNewData, onShowGrap
               ) : (
                 <button
                   onClick={onNewData}
-                  className="mt-8 rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-violet-500/30 transition hover:scale-105"
+                  className="mt-6 rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-violet-500/30 transition hover:scale-105"
                 >
                   {t.chat.newData}
                 </button>
