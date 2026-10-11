@@ -1,0 +1,317 @@
+"use client";
+
+import { createContext, useContext, useEffect, useState } from "react";
+
+// UI strings. `en` is typed as `typeof zh`, so a key missing from either language fails the build.
+
+const zh = {
+  htmlLang: "zh-Hant",
+  locale: "zh-TW",
+  toggle: "English",
+  app: {
+    backendDown: "連不到 SheetIR 後端，請先執行 sheetir serve（預設 http://127.0.0.1:8765）。",
+    error: (msg: string) => `出錯了：${msg}`,
+  },
+  nav: { newData: "新增資料", exports: "轉換檔案", chat: "聊天", graph: "依賴圖", charts: "圖表", language: "語言" },
+  sidebar: {
+    tagline: "和你的活頁簿對話",
+    search: "搜尋活頁簿",
+    workbooks: "活頁簿",
+    noMatch: "沒有符合的活頁簿",
+    empty: "還沒有資料，按左側「＋」新增",
+  },
+  upload: {
+    title: "新增資料",
+    intro: "上傳 Excel 活頁簿，SheetIR 會解析結構、公式與問題。",
+    parsing: (name: string) => `正在解析 ${name}…`,
+    sampling: "正在產生範例活頁簿…",
+    drop: "拖曳檔案到這裡，或",
+    choose: "點擊選擇",
+    hint: "支援 .xlsx / .xlsm，檔案只會存在本機",
+    or: "或",
+    sample: "載入範例報價單（含刻意埋入的錯誤）",
+  },
+  exports: {
+    title: "轉換檔案",
+    from: (name: string) => `由 ${name} 產生`,
+    pick: "先選擇一個活頁簿",
+    none: "還沒有活頁簿，先新增資料吧。",
+    original: "原始",
+    preview: "預覽",
+    download: "下載",
+    previewMore: (shown: number, total: number) => `只顯示前 ${shown} 列，共 ${total} 列，完整內容請下載。`,
+    labels: {
+      source: "原始活頁簿", "ir.db": "SheetIR 資料庫", "model.json": "語意模型",
+      "cells.csv": "儲存格清單", "issues.csv": "問題清單", "formula_groups.csv": "公式群組",
+    } as Record<string, string>,
+  },
+  chat: {
+    suggestions: [
+      { title: "活頁簿摘要", prompt: "給我這份活頁簿的摘要" },
+      { title: "找出問題", prompt: "有哪些問題？" },
+      { title: "參數與單位", prompt: "列出所有參數" },
+      { title: "表格結構", prompt: "有哪些表格和欄位？" },
+    ],
+    traceCell: "追溯這個儲存格",
+    stats: { formulas: "公式", groups: "群組", tables: "表格", params: "參數" },
+    noWorkbook: "尚未選擇活頁簿",
+    askAbout: (name: React.ReactNode) => <>想知道 {name} 的什麼？</>,
+    hero: "和你的 Excel 對話",
+    about: {
+      desc: "SheetTwin 會把 Excel 活頁簿解析成結構化的模型，找出公式錯誤、寫死的常數和沒人用的數值，並讓你用對話、依賴圖和圖表來理解它。",
+      features: {
+        chat: { title: "聊天", body: "問公式、參數和問題，或輸入儲存格（例如 Quote!J13）追溯計算來源" },
+        graph: { title: "依賴圖", body: "看每個數字是從哪些輸入一路算出來的" },
+        charts: { title: "圖表", body: "儲存格角色、問題分布和表格資料的視覺化" },
+        exports: { title: "轉換檔案", body: "下載解析結果：SQLite、JSON、CSV" },
+      },
+      privacy: "全部在本機分析，資料不會離開電腦，原始檔案也不會被修改",
+    },
+    newData: "新增資料",
+    showInGraph: (cell: string) => `在依賴圖中查看 ${cell}`,
+    placeholder: "問點什麼，或輸入儲存格位址，例如 Quote!J13",
+    placeholderEmpty: "先新增一份活頁簿",
+    send: "送出",
+    footer: "Enter 送出 · Shift + Enter 換行 · 點擊回覆中的儲存格可以繼續追溯",
+  },
+  graph: {
+    kinds: { param: "參數", input: "資料欄", formula: "公式", output: "輸出" },
+    overview: "總覽",
+    trace: "儲存格追溯",
+    tracePlaceholder: "追溯儲存格，例如 Quote!J13",
+    traceInfo: (cell: string) => `${cell} 往上 3 層、往下 2 層 · `,
+    counts: (nodes: number, edges: number) => `${nodes} 個節點 · ${edges} 條依賴`,
+    issueNodes: (n: number) => `${n} 個節點有問題`,
+    truncated: " · 節點太多，只顯示最近的 150 個",
+    hasIssue: "有問題",
+    thickness: "線越粗＝依賴的儲存格越多",
+    empty: "先新增一份活頁簿",
+    cells: (n: number) => ` · ${n} 個儲存格`,
+    formulaFirst: "公式（第一格）",
+    formula: "公式",
+    r1c1Group: "R1C1（整組相同）",
+    value: "值",
+    upDown: "上游 / 下游",
+    upDownCounts: (src: number, users: number) => `${src} 個來源 · ${users} 個使用者`,
+    issues: "問題",
+    traceThis: (cell: string) => `追溯 ${cell}`,
+    ask: "在聊天中詢問",
+  },
+  charts: {
+    title: "圖表",
+    sev: { high: "高嚴重度", medium: "中嚴重度", low: "低嚴重度" },
+    roles: { input: "輸入", derived: "計算", output: "輸出", label: "標籤", orphan: "未使用" } as Record<string, string>,
+    blank: "（空白）",
+    other: "其他",
+    kpi: { cells: "儲存格", formulas: "公式", sheets: "工作表", issues: "問題" },
+    share: (pct: number) => `佔 ${pct}%`,
+    highCount: (n: number) => `${n} 個高嚴重度`,
+    noHigh: "沒有高嚴重度",
+    rolesTitle: "儲存格角色",
+    rolesSub: "依賴關係決定的角色：被引用的常數是輸入，沒被引用的公式是輸出",
+    cellsCenter: "儲存格",
+    sevTitle: "問題嚴重度",
+    sevSub: "稽核時偵測到的問題",
+    issuesCenter: "問題",
+    noIssues: "沒有偵測到問題 🎉",
+    kindsTitle: "問題類型",
+    kindsSub: "顏色代表嚴重度：紅＝高、黃＝中、灰＝低",
+    none: "沒有問題",
+    sheetsTitle: "各工作表的儲存格與公式",
+    sheetsSub: "公式集中在哪些工作表",
+    tableData: "表格資料",
+    tableDataSub: "把偵測到的表格畫成圖：選一個數值欄位，可以依文字欄位分組加總",
+    tableMeta: (sheet: string, rows: number, fields: number) => `${sheet} · ${rows} 列 · ${fields} 個欄位`,
+    noTables: "沒有偵測到含數值的表格。",
+    noNumeric: "這個表格沒有數值欄位。",
+    value: "數值",
+    noValue: "（無值）",
+    group: "分組",
+    noGroup: "不分組（每一列）",
+    groupBy: (h: string) => `依 ${h}`,
+    pie: "圓餅圖",
+    bar: "長條圖",
+    dataTable: "資料表",
+    missingTitle: (field: React.ReactNode) => <>{field} 是公式欄位，但這個檔案裡沒有 Excel 計算過的值。</>,
+    missingBody: "SheetIR 目前還不會自己計算公式（Python 轉譯是下一個階段）。用 Excel 打開這個檔案、存檔後再上傳，就能看到這一欄的圖表。",
+    total: (f: string) => `${f} 合計`,
+    noteGroup: (g: string, f: string) => `依 ${g} 加總 ${f}`,
+    noteRows: (f: string) => `每一列的 ${f}，由大到小`,
+    noteTop: (n: number) => `，只顯示前 ${n} 列`,
+    noteMissing: (n: number) => `；${n} 列沒有值，未計入`,
+    notePercent: "；百分比欄位不適合加總成圓餅圖，改用長條圖",
+    colGroup: "分組",
+    colRow: "列",
+  },
+};
+
+const en: typeof zh = {
+  htmlLang: "en",
+  locale: "en-US",
+  toggle: "中文",
+  app: {
+    backendDown: "Can't reach the SheetIR backend. Start it with sheetir serve (default http://127.0.0.1:8765).",
+    error: (msg: string) => `Something went wrong: ${msg}`,
+  },
+  nav: { newData: "Add data", exports: "Converted files", chat: "Chat", graph: "Dependency graph", charts: "Charts", language: "Language" },
+  sidebar: {
+    tagline: "Talk to your workbooks",
+    search: "Search workbooks",
+    workbooks: "Workbooks",
+    noMatch: "No matching workbooks",
+    empty: "No data yet. Click “+” on the left to add some",
+  },
+  upload: {
+    title: "Add data",
+    intro: "Upload an Excel workbook and SheetIR will parse its structure, formulas and issues.",
+    parsing: (name: string) => `Parsing ${name}…`,
+    sampling: "Generating the sample workbook…",
+    drop: "Drop a file here, or ",
+    choose: "click to choose",
+    hint: ".xlsx / .xlsm; files stay on this machine",
+    or: "or",
+    sample: "Load the sample quotation (with planted errors)",
+  },
+  exports: {
+    title: "Converted files",
+    from: (name: string) => `Generated from ${name}`,
+    pick: "Choose a workbook first",
+    none: "No workbooks yet. Add some data first.",
+    original: "Original",
+    preview: "Preview",
+    download: "Download",
+    previewMore: (shown: number, total: number) => `Showing the first ${shown} of ${total} rows. Download for the full file.`,
+    labels: {
+      source: "Original workbook", "ir.db": "SheetIR database", "model.json": "Semantic model",
+      "cells.csv": "Cells", "issues.csv": "Issues", "formula_groups.csv": "Formula groups",
+    },
+  },
+  chat: {
+    suggestions: [
+      { title: "Workbook summary", prompt: "Give me a summary of this workbook" },
+      { title: "Find issues", prompt: "What issues are there?" },
+      { title: "Parameters & units", prompt: "List all parameters" },
+      { title: "Table structure", prompt: "What tables and fields are there?" },
+    ],
+    traceCell: "Trace this cell",
+    stats: { formulas: "formulas", groups: "groups", tables: "tables", params: "params" },
+    noWorkbook: "No workbook selected",
+    askAbout: (name: React.ReactNode) => <>What would you like to know about {name}?</>,
+    hero: "Talk to your Excel",
+    about: {
+      desc: "SheetTwin parses an Excel workbook into a structured model, finds formula errors, hard-coded constants and unused values, and lets you understand it through chat, a dependency graph and charts.",
+      features: {
+        chat: { title: "Chat", body: "Ask about formulas, parameters and issues, or type a cell (e.g. Quote!J13) to trace it" },
+        graph: { title: "Dependency graph", body: "See how every number is calculated from its inputs" },
+        charts: { title: "Charts", body: "Cell roles, issue breakdown and table data at a glance" },
+        exports: { title: "Converted files", body: "Download the parsed model as SQLite, JSON or CSV" },
+      },
+      privacy: "Everything runs on this machine: no data leaves it, and the original file is never modified",
+    },
+    newData: "Add data",
+    showInGraph: (cell: string) => `Show ${cell} in the graph`,
+    placeholder: "Ask something, or type a cell address such as Quote!J13",
+    placeholderEmpty: "Add a workbook first",
+    send: "Send",
+    footer: "Enter to send · Shift + Enter for a new line · Click a cell in a reply to keep tracing",
+  },
+  graph: {
+    kinds: { param: "Parameter", input: "Data column", formula: "Formula", output: "Output" },
+    overview: "Overview",
+    trace: "Cell trace",
+    tracePlaceholder: "Trace a cell, e.g. Quote!J13",
+    traceInfo: (cell: string) => `${cell}: 3 levels up, 2 down · `,
+    counts: (nodes: number, edges: number) => `${nodes} nodes · ${edges} dependencies`,
+    issueNodes: (n: number) => `${n} nodes with issues`,
+    truncated: " · too many nodes, showing the nearest 150",
+    hasIssue: "Has issues",
+    thickness: "Thicker line = more cells depend on it",
+    empty: "Add a workbook first",
+    cells: (n: number) => ` · ${n} cells`,
+    formulaFirst: "Formula (first cell)",
+    formula: "Formula",
+    r1c1Group: "R1C1 (same for the group)",
+    value: "Value",
+    upDown: "Upstream / downstream",
+    upDownCounts: (src: number, users: number) => `${src} sources · ${users} users`,
+    issues: "Issues",
+    traceThis: (cell: string) => `Trace ${cell}`,
+    ask: "Ask in chat",
+  },
+  charts: {
+    title: "Charts",
+    sev: { high: "High severity", medium: "Medium severity", low: "Low severity" },
+    roles: { input: "Input", derived: "Computed", output: "Output", label: "Label", orphan: "Unused" },
+    blank: "(blank)",
+    other: "Other",
+    kpi: { cells: "Cells", formulas: "Formulas", sheets: "Sheets", issues: "Issues" },
+    share: (pct: number) => `${pct}% of cells`,
+    highCount: (n: number) => `${n} high severity`,
+    noHigh: "None high severity",
+    rolesTitle: "Cell roles",
+    rolesSub: "From the dependency graph: referenced constants are inputs, unreferenced formulas are outputs",
+    cellsCenter: "cells",
+    sevTitle: "Issue severity",
+    sevSub: "Issues found by the audit",
+    issuesCenter: "issues",
+    noIssues: "No issues detected 🎉",
+    kindsTitle: "Issue kinds",
+    kindsSub: "Color shows severity: red = high, yellow = medium, gray = low",
+    none: "No issues",
+    sheetsTitle: "Cells and formulas per sheet",
+    sheetsSub: "Where the formulas are",
+    tableData: "Table data",
+    tableDataSub: "Chart a detected table: pick a numeric column, optionally summed by a text column",
+    tableMeta: (sheet: string, rows: number, fields: number) => `${sheet} · ${rows} rows · ${fields} columns`,
+    noTables: "No tables with numeric columns detected.",
+    noNumeric: "This table has no numeric columns.",
+    value: "Value",
+    noValue: " (no values)",
+    group: "Group",
+    noGroup: "None (each row)",
+    groupBy: (h: string) => `By ${h}`,
+    pie: "Pie",
+    bar: "Bar",
+    dataTable: "Data",
+    missingTitle: (field: React.ReactNode) => <>{field} is a formula column, but this file has no values calculated by Excel.</>,
+    missingBody: "SheetIR can't calculate formulas itself yet (Python translation is the next stage). Open the file in Excel, save it and upload it again to chart this column.",
+    total: (f: string) => `Total ${f}`,
+    noteGroup: (g: string, f: string) => `${f} summed by ${g}`,
+    noteRows: (f: string) => `${f} per row, largest first`,
+    noteTop: (n: number) => `; showing the top ${n} rows`,
+    noteMissing: (n: number) => `; ${n} rows without a value are left out`,
+    notePercent: "; percentages can't be summed into a pie, so this is a bar chart",
+    colGroup: "Group",
+    colRow: "Row",
+  },
+};
+
+export type Lang = "zh" | "en";
+export type Dict = typeof zh;
+const DICTS: Record<Lang, Dict> = { zh, en };
+const STORE_KEY = "sheettwin.lang";
+
+const I18nContext = createContext<{ lang: Lang; t: Dict; setLang: (l: Lang) => void }>({
+  lang: "zh", t: zh, setLang: () => {},
+});
+
+function initialLang(): Lang {
+  try {
+    const saved = localStorage.getItem(STORE_KEY);
+    if (saved === "zh" || saved === "en") return saved;
+  } catch {}
+  return "zh";
+}
+
+export function I18nProvider({ children }: { children: React.ReactNode }) {
+  const [lang, setLang] = useState<Lang>(initialLang);
+  useEffect(() => {
+    document.documentElement.lang = DICTS[lang].htmlLang;
+    try {
+      localStorage.setItem(STORE_KEY, lang);
+    } catch {}
+  }, [lang]);
+  return <I18nContext.Provider value={{ lang, t: DICTS[lang], setLang }}>{children}</I18nContext.Provider>;
+}
+
+export const useI18n = () => useContext(I18nContext);

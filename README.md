@@ -53,14 +53,46 @@ The original workbook is never modified.
 
 ## Quick start
 
-Requirements: [uv](https://docs.astral.sh/uv/) (it installs Python 3.11+ and all dependencies).
+Requirements: [uv](https://docs.astral.sh/uv/) (it installs Python 3.11+ and all dependencies) and
+[Node.js](https://nodejs.org/) 20+ for the chat UI.
 
 ```bash
 uv sync                      # create .venv and install dependencies
-uv run sheetir serve         # start the web UI at http://127.0.0.1:8765
+
+# build the chat UI once (and again after changing frontend/)
+cd frontend
+npm install
+npm run build                # writes sheetir/web/static/app (git-ignored)
+cd ..
+
+uv run sheetir serve         # http://127.0.0.1:8765
 ```
 
-Open the page and either drop in an `.xlsx` file or click **Load sample workbook**.
+| URL | Page |
+|---|---|
+| `http://127.0.0.1:8765/` | Landing page: what SheetTwin does, with screenshots (for demos and reviewers) |
+| `http://127.0.0.1:8765/app/` | Chat UI: talk to a workbook, upload new data, browse converted files |
+| `http://127.0.0.1:8765/legacy` | Structure browser: grid, issues, model, SQL |
+
+The built chat UI is not committed, so after cloning you need the `npm run build` step. Without it, `/`
+shows the structure browser instead.
+
+Without Node, skip the `frontend` step and use the structure browser.
+
+### Working on the chat UI
+
+Run the backend and the Next.js dev server side by side. The dev server reloads on every change and
+proxies `/api` to the backend:
+
+```bash
+uv run sheetir serve         # terminal 1: backend on :8765
+cd frontend && npm run dev   # terminal 2: open http://localhost:3000
+```
+
+Set `SHEETIR_API` if the backend is not on `http://127.0.0.1:8765`. When you are done, run
+`npm run build` so `sheetir serve` picks up the changes.
+
+In the UI, either drop in an `.xlsx` file or load the sample workbook.
 
 Without the UI:
 
@@ -90,13 +122,45 @@ As a side effect, SheetIR also flags `Quote!E17` as an orphan: because `G17` was
 
 ## Web UI
 
-`uv run sheetir serve` starts a local FastAPI server. The page is a single self-contained HTML file with no CDN or external requests, so it works offline.
+`uv run sheetir serve` starts a local FastAPI server that serves two pages and the HTTP API. Neither page loads anything from a CDN or makes external requests, so both work offline.
 
 | Option | Default | Meaning |
 |---|---|---|
 | `--host` | `127.0.0.1` | Use `0.0.0.0` to share with colleagues on the LAN |
 | `--port` | `8765` | |
 | `--data` | `data` | Where uploads and IR databases are stored |
+
+**Landing page (`/`)**: the product pitch, written for reviewers and demos: the problem, the four features with
+screenshots, how it works (L0–L3) and the issues found in the sample workbook. "Try the sample" opens `/app/?sample=1`,
+which loads the sample workbook. Copy is in `frontend/src/lib/landing-i18n.ts`.
+
+The screenshots in `frontend/public/screenshots/{zh,en}/` are committed. After changing the UI, re-shoot them with the
+app built and a backend on an empty data folder (so the sidebar shows only the sample):
+
+```bash
+uv run sheetir serve --data <empty folder>
+cd frontend && npm run screenshots   # uses an installed Edge or Chrome
+npm run build                        # include the new screenshots
+```
+
+**Chat UI (`/app/`)**, built from `frontend/` (Next.js, React, Tailwind):
+
+| Part | Contents |
+|---|---|
+| **新增資料** button | Upload dialog: drag and drop an `.xlsx`/`.xlsm`, or load the sample workbook |
+| **轉換檔案** button | Files derived from the workbook (original, `ir.db`, `model.json`, CSVs), with preview and download |
+| **依賴圖** button | Dependency graph. *Overview*: one node per formula group, table data column or standalone input, so a filled-down column is a single node. *Cell trace*: a cell's precedents (3 levels up) and dependents (2 levels down). Hovering a node highlights its whole calculation chain; nodes with issues get a badge |
+| **圖表** button | Charts. Structure and audit: cell roles and issue severity (donuts), issue kinds, cells and formulas per sheet. Table data: pick a detected table and a numeric column, shown per row (bars) or summed by a text column (donut or bars), with a data-table view. Formula columns only have values if the file was last saved by Excel |
+| Workbook list | Each workbook keeps its own chat history (stored in the browser) |
+| Chat | Answers about the summary, issues, parameters, tables, outputs, checks, or a cell such as `Quote!J13`. Cell ids in a reply are clickable, and replies about a cell link to its dependency graph |
+
+The chat is rule-based for now (`sheetir/web/chat.py`). The LLM Q&A stage will replace `answer()` there.
+
+The UI is bilingual: the **中 / EN** button at the bottom of the left rail switches between Traditional Chinese
+and English, including chat replies (`lang` in the chat request). UI strings live in
+`frontend/src/lib/i18n.tsx`, reply strings in `MSG` in `chat.py`. The choice is remembered in the browser.
+
+**Structure browser (`/legacy`)**, the single file `sheetir/web/static/index.html`:
 
 | Tab | Contents |
 |---|---|
@@ -129,6 +193,11 @@ its database (never the original file).
 | `GET` | `/api/workbooks/{id}/issues` | All issues |
 | `GET` | `/api/workbooks/{id}/model` | Tables, fields, parameters, outputs, groups, relations |
 | `POST` | `/api/workbooks/{id}/sql` | `{"query": "..."}` → columns and rows (max 500) |
+| `POST` | `/api/workbooks/{id}/chat` | `{"message": "...", "lang": "zh" \| "en"}` → `{"reply": markdown, "cells": [...]}` |
+| `GET` | `/api/workbooks/{id}/graph?cell=&up=&down=` | Block-level dependency graph; with `cell`, that cell's neighbourhood |
+| `GET` | `/api/workbooks/{id}/charts` | Role/issue/sheet statistics and the rows of every table (constants, or cached values for formulas) |
+| `GET` | `/api/workbooks/{id}/exports` | Converted files: name, label, format, size |
+| `GET` | `/api/workbooks/{id}/exports/{name}` | Download one file (`ir.db`, `model.json`, `cells.csv`, `issues.csv`, `formula_groups.csv`, or the original workbook) |
 
 ---
 
@@ -404,14 +473,20 @@ SheetTwin/
 │   ├── cli.py         sample | build | trace | sql | serve
 │   └── web/
 │       ├── app.py             FastAPI backend
-│       └── static/index.html  single-file UI
+│       ├── chat.py            rule-based chat answers (LLM hook later)
+│       ├── graph.py           dependency graphs for drawing (overview, cell trace)
+│       ├── charts.py          statistics and table rows for the charts view
+│       └── static/
+│           ├── index.html     structure browser (/legacy)
+│           └── app/           chat UI build output (git-ignored)
+├── frontend/          landing page + chat UI source (Next.js); `npm run build` copies it into static/app
 └── tests/
     ├── test_refs.py   reference parsing and R1C1 round trips
     ├── test_build.py  end-to-end build on the sample, Excel Tables, cycles
     ├── test_tables.py  table layouts: year/styled headers, multi-row headers, stub columns, sections, titles
     ├── test_relations.py  lookups, INDEX/MATCH, XLOOKUP, SUMIFS, match modes, table links
     ├── test_tablemodel.py  tree-model evaluator, scorer selection
-    └── test_web.py  web API: summary, sheet, layout, download, re-parse, delete
+    └── test_web.py  web API (summary, sheet, layout, download, re-parse, delete), chat answers, dependency graphs, chart data
 ```
 
 ---
@@ -422,7 +497,7 @@ SheetTwin/
 uv run pytest
 ```
 
-66 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, and the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL).
+73 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL), chat answers, dependency graphs and chart data. The chat UI itself is not covered by automated tests yet.
 
 ---
 
