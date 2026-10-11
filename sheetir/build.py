@@ -15,11 +15,13 @@ from .formula import STRUCTURAL_ARGS, ParsedFormula, parse_formula
 from .groups import group_formulas
 from .loader import CellKey, RawWorkbook, load
 from .refs import Ref, addr, num_to_col, parse_ref
+from .relations import Relation, extract_relations
 from .store import dumps
 from .structure import (
     Table, assign_field_keys, cell_in, classify_roles, detect_tables,
     field_anomalies, find_label, split_label, unique,
 )
+from .tablemodel import get_scorer
 
 TRIVIAL_LITERALS = {0.0, 1.0, -1.0, 2.0, 12.0, 100.0, 1000.0}
 
@@ -28,7 +30,7 @@ SEVERITY = {
     "broken_ref": "high", "external_link": "high", "unknown_sheet": "high", "parse_error": "high",
     "dynamic_ref": "medium", "volatile": "medium", "unresolved_ref": "medium", "unresolved_name": "medium",
     "array_formula": "medium", "data_table": "high", "cycle": "high",
-    "hardcoded_constant": "medium", "orphan": "low",
+    "hardcoded_constant": "medium", "approximate_lookup": "medium", "orphan": "low",
 }
 
 
@@ -115,6 +117,27 @@ def _expand(ref: Ref, cells_by_sheet: dict[str, dict[tuple[int, int], CellKey]])
     return sorted(k for (r, c), k in sheet_cells.items() if ref.contains(r, c))
 
 
+def _range_id(ref: Ref | None) -> str | None:
+    """Sheet-qualified A1 text without `$` anchors, so equal ranges compare equal."""
+    return None if ref is None else Ref(ref.sheet, ref.r1, ref.c1, ref.r2, ref.c2).a1()
+
+
+def _locate(ref: Ref | None, tables: list[Table], axis: str = "col") -> tuple[Table | None, str | None]:
+    """Table a range falls in, and the field when the range is one column of it."""
+    if ref is None:
+        return None, None
+    for t in tables:
+        top, bottom = t.top, t.bottom
+        if (t.sheet == ref.sheet
+                and (ref.r1 is None or (ref.r1 <= bottom and ref.r2 >= top))
+                and (ref.c1 is None or (ref.c1 <= t.c2 and ref.c2 >= t.c1))):
+            field = None
+            if axis == "col" and ref.c1 is not None and ref.c1 == ref.c2:
+                field = next((f.name for f in t.fields if f.col == ref.c1), None)
+            return t, field
+    return None, None
+
+
 def _norm(formula: str) -> str:
     """Whitespace-insensitive, case-insensitive (outside string literals) comparison form."""
     out, in_str = [], False
@@ -128,7 +151,9 @@ def _norm(formula: str) -> str:
     return "".join(out)
 
 
-def build_ir(xlsx: str | Path, db_path: str | Path) -> BuildResult:
+def build_ir(xlsx: str | Path, db_path: str | Path, table_scorer: str = "hand") -> BuildResult:
+    """Parse `xlsx` into a SheetIR database. `table_scorer` picks how header rows are recognized:
+    "hand" (hand-set weights) or "model" (classifiers trained on StatSheets)."""
     raw = load(xlsx)
     cells = raw.cells
     resolver = WorkbookResolver(raw)
@@ -145,7 +170,7 @@ def build_ir(xlsx: str | Path, db_path: str | Path) -> BuildResult:
     groups = group_formulas(keys)
     group_of = {ck: g.group_id for g in groups for ck in g.cells}
 
-    tables = detect_tables(raw, refs_of)
+    tables = detect_tables(raw, refs_of, {g.anchor for g in groups if g.axis == "col"}, get_scorer(table_scorer))
     for t in tables:
         assign_field_keys(t, keys)
 
@@ -182,7 +207,7 @@ def build_ir(xlsx: str | Path, db_path: str | Path) -> BuildResult:
 
     table_of: dict[CellKey, Table] = {}
     for t in tables:
-        for r in range(t.header_row or t.row_start, (t.total_row or t.row_end) + 1):
+        for r in range(t.top, t.bottom + 1):
             for c in range(t.c1, t.c2 + 1):
                 table_of[(t.sheet, r, c)] = t
         # A 2-column "label | value" block whose values are referenced one by one
@@ -192,6 +217,23 @@ def build_ir(xlsx: str | Path, db_path: str | Path) -> BuildResult:
             vals = [(t.sheet, r, value_fields[0].col) for r in t.data_rows()]
             if sum(v in direct_refs for v in vals) * 2 >= len(vals):
                 t.kind = "parameter_list"
+
+    # ---- relations: lookups and conditional aggregates --------------------------
+    relations: list[Relation] = extract_relations(parsed)
+    relation_rows = []
+    for rel in relations:
+        to_t, key_field = _locate(rel.key, tables, rel.key_axis)
+        ret_t, ret_field = _locate(rel.ret, tables, rel.key_axis)
+        from_t = table_of.get(rel.value_cell) if rel.value_cell else None
+        from_field = next((f.name for f in from_t.fields if f.col == rel.value_cell[2]), None) if from_t else None
+        relation_rows.append((
+            None, addr(*rel.cell), group_of.get(rel.cell), rel.function, rel.kind, rel.match, rel.value,
+            addr(*rel.value_cell) if rel.value_cell else None,
+            _range_id(rel.key), _range_id(rel.ret),
+            from_t.table_id if from_t else None, from_field,
+            to_t.table_id if to_t else None, key_field,
+            ret_field if ret_t is not None and ret_t is to_t else None,
+        ))
 
     # ---- L3: semantic names --------------------------------------------------
     semantic: dict[CellKey, str] = {}
@@ -265,6 +307,18 @@ def build_ir(xlsx: str | Path, db_path: str | Path) -> BuildResult:
         for v in consts:
             issue("hardcoded_constant", f"literal {v:g} in {g.key} (applies to {len(g.cells)} cells)",
                   g.anchor, g.group_id)
+    flagged_groups: set[int] = set()
+    for rel in relations:
+        if rel.kind != "lookup" or rel.match != "approximate" or rel.key is None:
+            continue
+        g = group_of.get(rel.cell)
+        if g in flagged_groups:
+            continue
+        keys_in_range = [cells[k] for k in _expand(rel.key, cells_by_sheet)]
+        if sum(c.vtype == "text" for c in keys_in_range) * 2 > len(keys_in_range):
+            flagged_groups.add(g)
+            issue("approximate_lookup", f"{rel.function} uses approximate match on text keys in {_range_id(rel.key)}; "
+                  "unsorted keys give wrong answers, add an exact-match argument", rel.cell, g)
     for ck, role in roles.items():
         if role == "orphan":
             issue("orphan", f"constant {cells[ck].value!r} is not used by any formula", ck)
@@ -317,7 +371,7 @@ def build_ir(xlsx: str | Path, db_path: str | Path) -> BuildResult:
     ]
     rows = {
         "meta": [("source", str(raw.path)), ("sha256", raw.sha256), ("sheetir_version", __version__),
-                 ("sheets", dumps(raw.sheets)),
+                 ("ir_schema", str(store.IR_SCHEMA)), ("table_scorer", table_scorer), ("sheets", dumps(raw.sheets)),
                  ("built_at", dt.datetime.now().isoformat(timespec="seconds"))],
         "cells": cell_rows,
         "formula_groups": group_rows,
@@ -326,10 +380,11 @@ def build_ir(xlsx: str | Path, db_path: str | Path) -> BuildResult:
         "edges": edges,
         "literals": [(addr(*ck), v, fn) for ck, pf in parsed.items() for v, fn in pf.literals],
         "tables": [(t.table_id, t.sheet, t.name, t.kind, t.source, t.header_row, t.row_start, t.row_end,
-                    t.c1, t.c2, t.key_col, t.total_row) for t in tables],
+                    t.c1, t.c2, t.key_col, t.total_row, t.header_top, t.confidence) for t in tables],
         "fields": [(None, t.table_id, f.col, f.header, f.name, f.unit, f.kind, f.key, f.number_format)
                    for t in tables for f in t.fields],
         "params": params,
+        "relations": relation_rows,
         "names": [(n.name, n.scope, n.refers_to) for n in raw.names],
         "issues": issues,
         "checks": [(n, int(p), s, d) for n, p, s, d in checks],
@@ -342,7 +397,7 @@ def build_ir(xlsx: str | Path, db_path: str | Path) -> BuildResult:
     counts = {
         "sheets": len(raw.sheets), "cells": len(cells), "formula_cells": len(parsed),
         "formula_groups": len(groups), "tables": len(tables), "params": len(params),
-        "edges": len(edges), "issues": len(issues),
+        "edges": len(edges), "relations": len(relations), "issues": len(issues),
     }
     return BuildResult(Path(db_path), counts, checks, dict(by_kind))
 

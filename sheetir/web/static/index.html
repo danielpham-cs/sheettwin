@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SheetTwin · SheetIR</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%235b4bd6'/%3E%3Cpath d='M4 5h8M4 8h8M4 11h8M7 4v8' stroke='white' stroke-width='1.2'/%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #6b7280; --line: #e3e6eb;
@@ -12,7 +13,9 @@
   --output: #e6f6ec; --output-ink: #1d7a46;
   --derived: #ffffff; --label-ink: #8a909c; --orphan: #f1f1f1;
   --high: #d93838; --high-soft: #fdecec; --medium: #c98200; --medium-soft: #fdf4e3; --low: #7c8594;
-  --group: #b9b0f5; --prec: #13a3a3;
+  --group: #b9b0f5; --prec: #2f6fd6; --ok: #1d7a46;
+  /* table colors: kept apart from issue red/amber, input blue, result green and the selection violet */
+  --t1: #0e8a8a; --t2: #b0399a; --t3: #8a6d1c; --t4: #4f6b8a; --t5: #6a8f1f; --t6: #7a4fb0;
   --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
@@ -22,7 +25,8 @@
     --input: #1b2a44; --input-ink: #8cb8ff; --output: #183326; --output-ink: #7fd8a4;
     --derived: #1c1f26; --label-ink: #7d8492; --orphan: #24272e;
     --high: #ff6b6b; --high-soft: #3a1f22; --medium: #f2b33d; --medium-soft: #3a3020; --low: #8b93a1;
-    --group: #5e54b8; --prec: #2cc5c5;
+    --group: #5e54b8; --prec: #7aa7ff; --ok: #7fd8a4;
+    --t1: #4fd1c5; --t2: #f07ab0; --t3: #d6b45a; --t4: #93aecb; --t5: #a8cf5a; --t6: #b896f0;
   }
 }
 * { box-sizing: border-box; }
@@ -36,46 +40,89 @@ a:hover { text-decoration: underline; }
 aside { background: var(--panel); border-right: 1px solid var(--line); padding: 16px; overflow: auto; }
 aside h1 { font-size: 17px; margin: 0 0 2px; }
 aside .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
-.drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 18px 10px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; }
+.drop { display: block; border: 1.5px dashed var(--line); border-radius: 10px; padding: 18px 10px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; }
 .drop.over, .drop:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.btn { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 6px 12px; }
+.btn { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 5px 11px; font-size: 13px; }
 .btn:hover { border-color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.small { padding: 2px 8px; font-size: 12px; }
 .wb-list { list-style: none; padding: 0; margin: 16px 0 0; }
-.wb-list li { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; }
+.wb-list li { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 2px; position: relative; }
 .wb-list li:hover { background: var(--bg); }
 .wb-list li.active { background: var(--accent-soft); }
-.wb-list .n { font-weight: 600; word-break: break-all; }
+.wb-list .n { font-weight: 600; word-break: break-all; padding-right: 18px; }
 .wb-list .m { font-size: 12px; color: var(--muted); }
+.wb-list .del { position: absolute; right: 6px; top: 6px; border: 0; background: none; color: var(--muted); display: none; padding: 0 4px; }
+.wb-list li:hover .del { display: block; }
+.wb-list .del:hover { color: var(--high); }
 .status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 18px; }
 
 main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 header { padding: 14px 20px 0; background: var(--panel); border-bottom: 1px solid var(--line); }
-.title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .title h2 { margin: 0; font-size: 18px; }
 .title .meta { color: var(--muted); font-size: 12px; }
-.stats { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
-.stat { background: var(--bg); border-radius: 8px; padding: 4px 10px; font-size: 12px; color: var(--muted); }
-.stat b { color: var(--text); font-size: 14px; margin-right: 3px; }
-.checks { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-.chk { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); }
-.chk.pass { color: var(--output-ink); }
-.chk.warn { color: var(--medium); border-color: var(--medium); }
-.chk.fail { color: var(--high); border-color: var(--high); }
-.tabs { display: flex; gap: 2px; }
+.title .actions { margin-left: auto; display: flex; gap: 6px; }
+.stale { background: var(--medium-soft); color: var(--medium); border-radius: 8px; padding: 6px 10px; font-size: 13px; margin-top: 8px; }
+.tabs { display: flex; gap: 2px; margin-top: 10px; }
 .tab { border: 0; background: none; padding: 8px 14px; color: var(--muted); border-bottom: 2px solid transparent; }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.tab .n { font-size: 11px; background: var(--bg); border-radius: 99px; padding: 0 6px; margin-left: 4px; color: var(--muted); font-weight: 500; }
 .view { flex: 1; overflow: auto; padding: 16px 20px; display: none; }
 .view.active { display: block; }
 #view-sheet.active { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; padding: 12px 20px; overflow: hidden; }
 .empty { color: var(--muted); padding: 60px 20px; text-align: center; }
 
-.sheet-tabs { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+/* ---------- overview ---------- */
+.ov { max-width: 1180px; }
+.lead { font-size: 15px; margin: 0 0 16px; max-width: 860px; }
+.lead b { font-weight: 650; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; margin-bottom: 26px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer; text-align: left; color: var(--text); }
+.kpi:hover { border-color: var(--accent); }
+.kpi .v { font-size: 24px; font-weight: 650; line-height: 1.1; }
+.kpi .k { font-size: 13px; font-weight: 600; margin-top: 2px; }
+.kpi .d { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.kpi.warn .v { color: var(--high); }
+.ov h3 { font-size: 15px; margin: 0 0 10px; }
+.ov section { margin-bottom: 28px; }
+.steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.steps li { display: grid; grid-template-columns: 26px 210px 1fr; gap: 10px; align-items: start; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.steps .ic { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--output); color: var(--output-ink); }
+.steps .ic.warn { background: var(--medium-soft); color: var(--medium); }
+.steps .ic.fail { background: var(--high-soft); color: var(--high); }
+.steps .t { font-weight: 600; font-size: 13.5px; }
+.steps .t small { display: block; color: var(--muted); font-weight: 400; font-size: 11.5px; }
+.steps .r { font-size: 13px; }
+.steps .r .hint { display: block; }
+.sheet-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.scard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; cursor: pointer; }
+.scard:hover { border-color: var(--accent); }
+.scard canvas { width: 100%; height: 150px; display: block; background: var(--bg); border-radius: 6px; }
+.scard .n { font-weight: 600; margin-top: 8px; }
+.scard .m { font-size: 12px; color: var(--muted); }
+.attn { display: grid; gap: 6px; }
+.attn .issue { background: var(--panel); border-radius: 0 8px 8px 0; padding: 8px 12px; }
+.query { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.query pre { background: var(--bg); border-radius: 8px; padding: 10px; overflow: auto; margin: 10px 0; font-size: 12.5px; }
+
+/* ---------- sheet grid ---------- */
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.sheet-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .sheet-tab { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 6px; padding: 3px 10px; font-size: 13px; }
 .sheet-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-left: auto; }
+.seg button { border: 0; background: var(--panel); color: var(--muted); padding: 3px 10px; font-size: 12.5px; }
+.seg button.on { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+.chk-inline { font-size: 12.5px; color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+.tchips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; min-height: 0; }
+.tchip { border: 1px solid var(--line); background: var(--panel); border-radius: 99px; padding: 2px 10px 2px 8px; font-size: 12.5px; color: var(--text); display: inline-flex; align-items: center; gap: 6px; }
+.tchip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--tc); }
+.tchip .m { color: var(--muted); font-size: 11.5px; }
+.tchip:hover, .tchip.on { border-color: var(--tc); }
 .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; border: 1px solid var(--line); background: var(--sw); }
-.grid-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); height: calc(100% - 64px); }
+.grid-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); flex: 1; min-height: 0; }
 table.grid { border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
 .grid th { position: sticky; top: 0; background: var(--bg); color: var(--muted); font-weight: 500; padding: 3px 6px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); z-index: 2; }
 .grid th.rh { position: sticky; left: 0; z-index: 1; text-align: right; }
@@ -87,15 +134,23 @@ table.grid { border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
 .grid td.orphan { background: var(--orphan); color: var(--muted); text-decoration: line-through; }
 .grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .grid td .f { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
-.grid td.iss-high { box-shadow: inset 0 0 0 2px var(--high); }
-.grid td.iss-medium { box-shadow: inset 0 0 0 2px var(--medium); }
+.grid td.ftext { font-family: var(--mono); font-size: 11.5px; color: var(--text); }
+.grid td.s-hdr { background: color-mix(in srgb, var(--tc) 26%, var(--panel)); font-weight: 600; color: var(--text); }
+.grid td.s-body { background: color-mix(in srgb, var(--tc) 7%, var(--panel)); }
+.grid td.s-tot { background: color-mix(in srgb, var(--tc) 18%, var(--panel)); font-weight: 600; }
+.grid td.s-key { font-weight: 600; }
+.grid td.param { background: var(--input); color: var(--input-ink); }
 .grid td.in-group { background-image: linear-gradient(var(--group), var(--group)); background-size: 3px 100%; background-repeat: no-repeat; }
 .grid td.prec { outline: 2px dashed var(--prec); outline-offset: -3px; }
 .grid td.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+.grid td.flash { animation: flash 1.2s ease-out; }
+@keyframes flash { from { filter: brightness(.82); } to { filter: none; } }
 
 .inspector { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: auto; padding: 14px; }
 .inspector h3 { margin: 0; font-size: 16px; }
 .inspector .sem { font-family: var(--mono); font-size: 12.5px; color: var(--accent); margin: 2px 0 10px; word-break: break-all; }
+.where { background: var(--bg); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-bottom: 12px; }
+.where b { font-weight: 600; }
 .kv { display: grid; grid-template-columns: 80px 1fr; gap: 4px 8px; font-size: 13px; margin-bottom: 12px; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; word-break: break-all; }
@@ -103,12 +158,13 @@ table.grid { border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
 .badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; font-weight: 600; }
 .badge.input { background: var(--input); color: var(--input-ink); }
 .badge.output { background: var(--output); color: var(--output-ink); }
-.badge.derived, .badge.label, .badge.orphan, .badge.empty { background: var(--bg); color: var(--muted); }
+.badge.derived, .badge.label, .badge.orphan, .badge.empty, .badge.data { background: var(--bg); color: var(--muted); }
 .badge.high { background: var(--high-soft); color: var(--high); }
 .badge.medium { background: var(--medium-soft); color: var(--medium); }
 .badge.low { background: var(--bg); color: var(--low); }
 .issue { border-left: 3px solid var(--line); padding: 4px 8px; margin-bottom: 6px; font-size: 13px; }
 .issue.high { border-color: var(--high); } .issue.medium { border-color: var(--medium); }
+.issue .why { color: var(--muted); font-size: 12px; }
 .tree div { font-size: 12.5px; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tree .s { color: var(--muted); }
 
@@ -119,9 +175,11 @@ table.list { border-collapse: collapse; width: 100%; background: var(--panel); b
 .filters { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
 .filters .btn.on { background: var(--accent-soft); border-color: var(--accent); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
-.card h4 { margin: 0 0 4px; font-size: 15px; }
+.card h4 { margin: 0 0 4px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.card h4 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tc); }
 .card .m { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
-h3.h { font-size: 15px; margin: 4px 0 10px; }
+h3.h { font-size: 15px; margin: 4px 0 4px; }
+.h-sub { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
 textarea.sql { width: 100%; min-height: 120px; font-family: var(--mono); font-size: 13px; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); resize: vertical; }
 .err { color: var(--high); font-size: 13px; margin: 8px 0; white-space: pre-wrap; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0 12px; }
@@ -144,34 +202,46 @@ textarea.sql { width: 100%; min-height: 120px; font-family: var(--mono); font-si
 
   <main>
     <header id="hdr" hidden>
-      <div class="title"><h2 id="wb-name"></h2><span class="meta" id="wb-meta"></span></div>
-      <div class="stats" id="stats"></div>
-      <div class="checks" id="checks"></div>
+      <div class="title">
+        <h2 id="wb-name"></h2><span class="meta" id="wb-meta"></span>
+        <div class="actions">
+          <button class="btn" id="btn-rebuild" title="Parse the stored copy again with the current SheetIR">Re-parse</button>
+          <a class="btn" id="btn-db" download title="The SheetIR database: open it with any SQLite tool">Download .db</a>
+        </div>
+      </div>
+      <div class="stale" id="stale" hidden>This result was built by an older SheetIR. Click <b>Re-parse</b> to see tables, header rows and confidence as the current version detects them.</div>
       <nav class="tabs">
-        <button class="tab active" data-view="sheet">Sheets</button>
-        <button class="tab" data-view="issues">Issues</button>
-        <button class="tab" data-view="model">Model</button>
+        <button class="tab active" data-view="overview">Overview</button>
+        <button class="tab" data-view="sheet">Sheets</button>
+        <button class="tab" data-view="model">Tables &amp; names</button>
+        <button class="tab" data-view="issues">Issues<span class="n" id="n-issues"></span></button>
         <button class="tab" data-view="sql">SQL</button>
       </nav>
     </header>
 
-    <div class="view active" id="view-empty"><div class="empty">Upload a workbook or load the sample to get started.</div></div>
+    <div class="view active" id="view-empty"><div class="empty">
+      <p><b>Upload an Excel workbook</b> (or load the sample) to see how SheetIR reads it:</p>
+      <p>the tables it finds, the inputs and outputs, every formula's calculation chain, and the problems it spots.<br>
+      The result is a SQLite database you can query. Your file is never modified.</p>
+    </div></div>
+
+    <section class="view" id="view-overview"><div class="ov" id="ov"></div></section>
 
     <section class="view" id="view-sheet">
       <div style="min-width:0; display:flex; flex-direction:column; overflow:hidden">
-        <div class="sheet-tabs" id="sheet-tabs"></div>
-        <div class="legend">
-          <span style="--sw:var(--input)">input</span>
-          <span style="--sw:var(--output)">output</span>
-          <span style="--sw:var(--derived)">derived (ƒ)</span>
-          <span style="--sw:var(--orphan)">orphan</span>
-          <span style="--sw:var(--high-soft)">issue</span>
-          <span style="--sw:var(--group)">same formula group</span>
-          <span style="--sw:transparent">dashed outline: direct precedent</span>
+        <div class="toolbar">
+          <div class="sheet-tabs" id="sheet-tabs"></div>
+          <label class="chk-inline"><input type="checkbox" id="show-formulas"> formulas</label>
+          <div class="seg" id="mode">
+            <button data-m="structure" class="on" title="Tables, header rows, total rows and parameters">Structure</button>
+            <button data-m="role" title="Inputs, outputs, labels and unused values">Roles</button>
+          </div>
         </div>
+        <div class="tchips" id="tchips"></div>
+        <div class="legend" id="legend"></div>
         <div class="grid-wrap" id="grid-wrap"></div>
       </div>
-      <div class="inspector" id="inspector"><div class="hint">Click a cell to see its formula, group, issues and calculation chain.</div></div>
+      <div class="inspector" id="inspector"></div>
     </section>
 
     <section class="view" id="view-issues">
@@ -192,11 +262,38 @@ textarea.sql { width: 100%; min-height: 120px; font-family: var(--mono); font-si
 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const colName = (n) => { let s = ""; while (n) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; };
+const rangeA1 = (t) => `${colName(t.col_start)}${t.header_top || t.header_row || t.row_start}:${colName(t.col_end)}${t.total_row || t.row_end}`;
+const plural = (n, w, ws) => `${n} ${n === 1 ? w : (ws || w + "s")}`;
 const MAX_ROWS = 400, MAX_COLS = 52;
+const TABLE_COLORS = 6;
+const tcolor = (t) => `var(--t${((t.table_id - 1) % TABLE_COLORS) + 1})`;
 
-const state = { wid: null, summary: null, sheet: null, cells: new Map(), selected: null, issueFilter: "all" };
+const state = { wid: null, summary: null, sheet: null, sheetData: null, cells: new Map(), selected: null,
+  issueFilter: "all", mode: "structure", showFormulas: false, focusTable: null };
+
+// Plain-language meaning of each issue kind (README, "Detected issues").
+const ISSUE_HELP = {
+  inconsistent_formula: "This cell's formula differs from the rest of its column, often a typo or a forgotten update.",
+  hardcoded_in_formula_column: "A typed-in value sits where the column otherwise calculates: the formula was probably overwritten.",
+  missing_formula: "An empty cell in a column that otherwise calculates.",
+  hardcoded_constant: "A business number is written inside a formula instead of an input cell, so it is easy to miss when it changes.",
+  approximate_lookup: "A lookup without exact match over text keys can return the wrong row unless the keys are sorted.",
+  dynamic_ref: "INDIRECT / OFFSET build references from text, so the cells it depends on cannot be traced.",
+  volatile: "Recalculates on every open (TODAY, NOW, RAND…), so results change between runs.",
+  orphan: "A value that no formula uses: a leftover, or a reference that was forgotten.",
+  broken_ref: "The formula contains #REF!: a cell it pointed to was deleted.",
+  external_link: "The formula reads another workbook, which SheetIR cannot see.",
+  unknown_sheet: "The formula points to a sheet that does not exist.",
+  parse_error: "SheetIR could not read this formula.",
+  data_table: "A what-if data table, which SheetIR does not model.",
+  cycle: "The cell is part of a circular reference.",
+  unresolved_ref: "A structured reference that could not be resolved.",
+  unresolved_name: "A defined name that could not be resolved.",
+  array_formula: "An array (CSE) formula: handled, but worth reviewing.",
+};
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
@@ -218,6 +315,7 @@ function fmt(v, nf) {
   if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
   return String(v);
 }
+const shown = (c) => c.vtype === "formula" ? c.cached : c.value;
 
 // ---------------- workbooks ----------------
 async function loadList() {
@@ -225,17 +323,24 @@ async function loadList() {
   $("#wb-list").innerHTML = list.map((w) => `
     <li data-id="${w.id}" class="${w.id === state.wid ? "active" : ""}">
       <div class="n">${esc(w.name)}</div>
-      <div class="m">${esc((w.built_at || "").replace("T", " "))} · ${w.high_issues} high-severity issues</div>
+      <div class="m">${esc((w.built_at || "").replace("T", " "))}${w.high_issues ? ` · ${plural(w.high_issues, "high issue")}` : ""}</div>
+      <button class="del" data-del="${w.id}" title="Remove from this list (deletes the stored copy and database, never your original file)">✕</button>
     </li>`).join("");
-  $("#wb-list").querySelectorAll("li").forEach((li) => li.onclick = () => openWorkbook(li.dataset.id));
+  $$("#wb-list li").forEach((li) => li.onclick = (e) => { if (!e.target.dataset.del) openWorkbook(li.dataset.id); });
+  $$("#wb-list [data-del]").forEach((b) => b.onclick = async () => {
+    if (!confirm("Remove this workbook from SheetIR? Your original file is not affected.")) return;
+    await api(`/api/workbooks/${b.dataset.del}`, { method: "DELETE" });
+    const rest = await loadList();
+    if (b.dataset.del === state.wid) rest.length ? openWorkbook(rest[0].id) : location.reload();
+  });
   return list;
 }
 
-async function ingest(promise) {
-  status("Parsing…");
+async function ingest(promise, verb = "Parsing") {
+  status(verb + "…");
   try {
     const r = await promise;
-    status(`Done: ${r.counts.formula_cells} formulas → ${r.counts.formula_groups} groups`);
+    status(`Done: ${r.counts.cells} cells, ${r.counts.formula_cells} formulas, ${r.counts.tables} tables`);
     await loadList();
     await openWorkbook(r.id);
   } catch (e) { status("Error: " + e.message); }
@@ -246,6 +351,7 @@ function uploadFile(f) {
 }
 $("#file").onchange = (e) => e.target.files[0] && uploadFile(e.target.files[0]);
 $("#btn-sample").onclick = () => ingest(api("/api/workbooks/sample", { method: "POST" }));
+$("#btn-rebuild").onclick = () => ingest(api(`/api/workbooks/${state.wid}/rebuild`, { method: "POST" }), "Re-parsing");
 const drop = $("#drop");
 drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
 drop.ondragleave = () => drop.classList.remove("over");
@@ -254,49 +360,211 @@ drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); e.data
 async function openWorkbook(id) {
   state.wid = id;
   const s = state.summary = await api(`/api/workbooks/${id}/summary`);
-  document.querySelectorAll("#wb-list li").forEach((li) => li.classList.toggle("active", li.dataset.id === id));
+  $$("#wb-list li").forEach((li) => li.classList.toggle("active", li.dataset.id === id));
   $("#hdr").hidden = false;
   $("#wb-name").textContent = s.name;
-  $("#wb-meta").textContent = `sha256 ${s.sha256.slice(0, 12)} · build ${(s.built_at || "").replace("T", " ")}`;
-  const c = s.counts;
-  $("#stats").innerHTML = [["cells", "cells"], ["formulas", "formulas"], ["groups", "formula groups"], ["tables", "tables"],
-    ["params", "parameters"], ["outputs", "outputs"]].map(([k, l]) => `<span class="stat"><b>${c[k]}</b>${l}</span>`).join("");
-  $("#checks").innerHTML = s.checks.map((k) => {
-    const cls = k.passed ? "pass" : (k.severity === "error" ? "fail" : "warn");
-    return `<span class="chk ${cls}" title="${esc(k.detail)}">${k.passed ? "✓" : cls === "fail" ? "✗" : "!"} ${esc(k.name)}</span>`;
-  }).join("");
-  state.selected = null;
-  $("#inspector").innerHTML = `<div class="hint">Click a cell to see its formula, group, issues and calculation chain.</div>`;
+  $("#wb-meta").textContent = `parsed ${(s.built_at || "").replace("T", " ")} · sha256 ${s.sha256.slice(0, 12)}`;
+  $("#btn-db").href = `/api/workbooks/${id}/db`;
+  $("#stale").hidden = !s.stale;
+  $("#n-issues").textContent = s.counts.issues ?? "";
+  state.selected = null; state.sheet = null; state.focusTable = null;
+  resetInspector();
   $("#sheet-tabs").innerHTML = s.sheets.map((n) => `<button class="sheet-tab" data-s="${esc(n)}">${esc(n)}</button>`).join("");
-  $("#sheet-tabs").querySelectorAll("button").forEach((b) => b.onclick = () => openSheet(b.dataset.s));
-  showView(currentView() === "empty" ? "sheet" : currentView());
-  await openSheet(s.sheets[0]);
+  $$("#sheet-tabs button").forEach((b) => b.onclick = () => openSheet(b.dataset.s));
+  const v = currentView();
+  showView(v === "empty" ? "overview" : v);
 }
 
 // ---------------- views ----------------
 const currentView = () => (document.querySelector(".view.active")?.id || "view-empty").slice(5);
-function showView(v) {
-  document.querySelectorAll(".view").forEach((el) => el.classList.toggle("active", el.id === "view-" + v));
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === v));
+async function showView(v) {
+  $$(".view").forEach((el) => el.classList.toggle("active", el.id === "view-" + v));
+  $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === v));
+  if (v === "overview") renderOverview();
+  if (v === "sheet" && !state.sheet) await openSheet(state.summary.sheets[0]);
   if (v === "issues") renderIssues();
   if (v === "model") renderModel();
   if (v === "sql") initSql();
+  saveLocation();
 }
-document.querySelectorAll(".tab").forEach((t) => t.onclick = () => showView(t.dataset.view));
+$$(".tab").forEach((t) => t.onclick = () => showView(t.dataset.view));
+
+// ---------------- overview ----------------
+async function renderOverview() {
+  const s = state.summary, c = s.counts;
+  const check = Object.fromEntries(s.checks.map((k) => [k.name, k]));
+  const sheetsWithTables = s.sheet_stats.filter((x) => x.tables).length;
+  let h = `<p class="lead">SheetIR read <b>${plural(c.cells, "non-empty cell")}</b> on <b>${plural(s.sheets.length, "sheet")}</b>.
+    Its <b>${plural(c.formulas, "formula")}</b> come down to <b>${plural(c.groups, "distinct calculation")}</b>
+    (a formula filled down a column counts once). It found <b>${plural(c.tables, "table")}</b>${c.tables ? ` on ${plural(sheetsWithTables, "sheet")}` : ""},
+    <b>${plural(c.params, "named input")}</b> and <b>${plural(c.outputs, "result")}</b>, and flagged
+    <b>${plural(c.issues, "issue")}</b>${c.issues_high ? `, ${c.issues_high} of them high severity` : ""}.</p>`;
+
+  const kpi = (v, k, d, go, warn) => `<button class="kpi ${warn ? "warn" : ""}" data-go-view="${go}"><div class="v">${v}</div><div class="k">${k}</div><div class="d">${d}</div></button>`;
+  h += `<div class="kpis">` +
+    kpi(c.tables, "Tables", "Header, rows and fields, each cell addressable by row key and field", "model") +
+    kpi(c.params, "Parameters", "Inputs outside tables, named from their labels", "model") +
+    kpi(c.outputs, "Results", "Formulas nothing else uses: what the workbook produces", "model") +
+    kpi(c.groups, "Calculations", `${c.formulas} formulas grouped by the computation they repeat`, "model") +
+    kpi(c.relations, "Lookups", "VLOOKUP / INDEX-MATCH / SUMIFS links between tables", "model") +
+    kpi(c.issues, "Issues", c.issues_high ? `${c.issues_high} high severity` : "nothing high severity", "issues", c.issues_high > 0) +
+    `</div>`;
+
+  const st = (ok, warn) => ok ? "" : warn ? "warn" : "fail";
+  const mark = (cls) => `<span class="ic ${cls}">${cls === "" ? "✓" : cls === "warn" ? "!" : "✗"}</span>`;
+  const CHECK_NOTE = { cached_values_present: "normal when the file was written by a script rather than saved in Excel; values are shown as formulas" };
+  const chk = (name) => {
+    const k = check[name];
+    if (!k) return "";
+    const m = k.passed ? "✓" : k.severity === "error" ? "✗" : "!";
+    return `<span class="hint">${m} self-check ${esc(name)}: ${esc(k.detail)}${!k.passed && CHECK_NOTE[name] ? ` (${CHECK_NOTE[name]})` : ""}</span>`;
+  };
+  const steps = [
+    ["Read the workbook", "L0 raw", `${plural(c.cells, "cell")} on ${plural(s.sheets.length, "sheet")}, ${plural(c.names, "defined name")}. Values, formulas and the results Excel last calculated.`, "", chk("cached_values_present")],
+    ["Parse formulas", "L1 formula", `${plural(c.formulas, "formula")} split into references (cross-sheet, names, structured refs), giving ${plural(c.edges, "dependency link")}.`,
+      st(!check.references_resolved || check.references_resolved.passed, true), chk("references_resolved") + chk("acyclic")],
+    ["Group calculations", "L2 structure", `Formulas with the same shape (R1C1) next to each other become one calculation: ${c.formulas} → ${c.groups}.`,
+      st(!check.group_translation || check.group_translation.passed), chk("formula_coverage") + chk("group_translation")],
+    ["Find tables", "L2 structure", `${plural(c.tables, "table")}: header rows, body, total row, key column and fields.` +
+      ` <span class="hint">Header rows recognized by ${s.table_scorer === "model" ? "the model trained on StatSheets" : "hand-set rules"}.</span>`, ""],
+    ["Name inputs and results", "L3 semantic", `${plural(c.params, "parameter")} named from nearby labels, ${plural(c.inputs, "value")} read by formulas, ${plural(c.outputs, "result")}. Every cell gets a readable address such as <code>table["row"].field</code>.`, ""],
+    ["Read lookups", "L2 structure", `${plural(c.relations, "lookup or conditional aggregate", "lookups or conditional aggregates")} tying tables together.`, ""],
+    ["Audit", "issues", `${plural(c.issues, "issue")} found${c.issues_high ? `, ${c.issues_high} high severity` : ""}.`, c.issues_high ? "warn" : ""],
+  ];
+  h += `<section><h3>How SheetIR read this workbook</h3><ol class="steps">` + steps.map(([t, layer, r, cls, extra]) =>
+    `<li>${mark(cls)}<div class="t">${t}<small>${layer}</small></div><div class="r">${r}${extra || ""}</div></li>`).join("") + `</ol></section>`;
+
+  h += `<section><h3>Sheets</h3><div class="sheet-cards">` + s.sheet_stats.map((x) => `
+    <div class="scard" data-sheet="${esc(x.sheet)}"><canvas data-map="${esc(x.sheet)}"></canvas>
+      <div class="n">${esc(x.sheet)}</div>
+      <div class="m">${plural(x.cells, "cell")} · ${plural(x.formulas, "formula")} · ${plural(x.tables, "table")}${x.issues ? ` · ${plural(x.issues, "issue")}` : ""}</div>
+    </div>`).join("") + `</div><div class="hint" style="margin-top:6px">Colored blocks are detected tables (darker: header and total rows); blue: inputs, green: results, red: issues.</div></section>`;
+
+  h += `<section id="ov-attn"></section>`;
+  h += `<section><h3>Query the result</h3><div class="query">
+    Everything above is stored in one SQLite file. Download it and open it with any SQLite tool, or use the SQL tab.
+    <pre>-- every cell of a table, by row key and field
+SELECT semantic, value, formula FROM cells WHERE semantic LIKE '${esc(c.tables ? "%[%" : "params.%")}' LIMIT 20;
+-- what a result depends on
+SELECT * FROM deps WHERE dst_cell = '…';</pre>
+    <a class="btn" href="/api/workbooks/${state.wid}/db" download>Download .db</a> <button class="btn" data-go-view="sql">Open SQL tab</button></div></section>`;
+  $("#ov").innerHTML = h;
+  $$("#ov [data-go-view]").forEach((b) => b.onclick = () => showView(b.dataset.goView));
+  $$("#ov .scard").forEach((el) => el.onclick = () => { showView("sheet"); openSheet(el.dataset.sheet); });
+
+  const [layout, issues] = await Promise.all([api(`/api/workbooks/${state.wid}/layout`), api(`/api/workbooks/${state.wid}/issues`)]);
+  $$("#ov canvas[data-map]").forEach((cv) => drawMinimap(cv, layout[cv.dataset.map]));
+  const top = issues.filter((i) => i.severity !== "low").slice(0, 6);
+  $("#ov-attn").innerHTML = top.length ? `<h3>Needs attention</h3><div class="attn">` + top.map((i) =>
+    `<div class="issue ${esc(i.severity)}"><span class="badge ${esc(i.severity)}">${esc(i.kind.replace(/_/g, " "))}</span>
+      ${i.cell_id ? `<a data-go="${esc(i.cell_id)}">${esc(i.cell_id)}</a>` : ""} <span class="mono hint">${esc(i.semantic || "")}</span>
+      <div class="why">${esc(ISSUE_HELP[i.kind] || "")} ${esc(i.detail)}</div></div>`).join("") +
+    `</div>${issues.length > top.length ? `<div class="row"><button class="btn" data-go-view="issues">All ${issues.length} issues</button></div>` : ""}` : "";
+  $$("#ov-attn [data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
+  $$("#ov-attn [data-go-view]").forEach((b) => b.onclick = () => showView(b.dataset.goView));
+}
+
+function drawMinimap(cv, data) {
+  if (!data) return;
+  const css = getComputedStyle(document.documentElement);
+  const v = (n) => css.getPropertyValue(n).trim();
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  const maxR = Math.max(1, ...data.cells.map((x) => x[0]), ...data.tables.map((t) => t.total_row || t.row_end));
+  const maxC = Math.max(1, ...data.cells.map((x) => x[1]), ...data.tables.map((t) => t.col_end));
+  const s = Math.max(0.5, Math.min(14, (W - 8) / maxC, (H - 8) / maxR));
+  const x0 = 4, y0 = 4;
+  for (const t of data.tables) {
+    const col = v(`--t${((t.table_id - 1) % TABLE_COLORS) + 1}`);
+    const top = t.header_row || t.row_start;
+    g.globalAlpha = 0.16; g.fillStyle = col;
+    g.fillRect(x0 + (t.col_start - 1) * s, y0 + (top - 1) * s, (t.col_end - t.col_start + 1) * s, ((t.total_row || t.row_end) - top + 1) * s);
+    g.globalAlpha = 0.55;
+    if (t.header_row) g.fillRect(x0 + (t.col_start - 1) * s, y0 + (t.header_row - 1) * s, (t.col_end - t.col_start + 1) * s, s);
+    if (t.total_row) g.fillRect(x0 + (t.col_start - 1) * s, y0 + (t.total_row - 1) * s, (t.col_end - t.col_start + 1) * s, s);
+    g.globalAlpha = 1; g.strokeStyle = col; g.lineWidth = 1.2;
+    g.strokeRect(x0 + (t.col_start - 1) * s, y0 + (top - 1) * s, (t.col_end - t.col_start + 1) * s, ((t.total_row || t.row_end) - top + 1) * s);
+  }
+  const fill = { input: v("--input-ink"), output: v("--output-ink"), derived: v("--muted"), label: v("--label-ink"), orphan: v("--line") };
+  const cs = Math.max(0.5, s - (s > 3 ? 1 : 0));
+  for (const [r, c, role, , sev] of data.cells) {
+    g.globalAlpha = role === "label" ? 0.35 : 0.8;
+    g.fillStyle = sev === "high" || sev === "medium" ? v("--high") : fill[role] || v("--muted");
+    g.fillRect(x0 + (c - 1) * s, y0 + (r - 1) * s, cs, cs);
+  }
+  g.globalAlpha = 1;
+}
 
 // ---------------- sheet grid ----------------
+function renderLegend() {
+  $("#legend").innerHTML = state.mode === "structure"
+    ? `<span style="--sw:color-mix(in srgb, var(--t1) 26%, var(--panel))">header row</span>
+       <span style="--sw:color-mix(in srgb, var(--t1) 7%, var(--panel))">table body</span>
+       <span style="--sw:color-mix(in srgb, var(--t1) 18%, var(--panel))">total row</span>
+       <span style="--sw:var(--input)">parameter / input</span><span style="--sw:var(--output)">result</span>
+       <span style="--sw:var(--high-soft)">issue</span><span style="--sw:var(--group)">same calculation</span>`
+    : `<span style="--sw:var(--input)">input</span><span style="--sw:var(--output)">result (output)</span>
+       <span style="--sw:var(--derived)">derived (ƒ)</span><span style="--sw:var(--orphan)">unused value</span>
+       <span style="--sw:var(--high-soft)">issue</span><span style="--sw:var(--group)">same calculation</span>
+       <span style="--sw:transparent">dashed: direct precedent</span>`;
+}
+$$("#mode button").forEach((b) => b.onclick = () => {
+  state.mode = b.dataset.m;
+  $$("#mode button").forEach((x) => x.classList.toggle("on", x === b));
+  renderGrid();
+});
+$("#show-formulas").onchange = (e) => { state.showFormulas = e.target.checked; renderGrid(); };
+
 async function openSheet(name) {
   state.sheet = name;
-  document.querySelectorAll(".sheet-tab").forEach((b) => b.classList.toggle("active", b.dataset.s === name));
-  const data = await api(`/api/workbooks/${state.wid}/sheet?name=${encodeURIComponent(name)}`);
-  state.cells = new Map(data.cells.map((c) => [c.cell_id, c]));
-  const issues = {};
-  for (const i of data.issues) {
-    if (!issues[i.cell_id] || i.severity === "high") issues[i.cell_id] = i.severity;
+  state.focusTable = null;
+  $$(".sheet-tab").forEach((b) => b.classList.toggle("active", b.dataset.s === name));
+  state.sheetData = await api(`/api/workbooks/${state.wid}/sheet?name=${encodeURIComponent(name)}`);
+  state.cells = new Map(state.sheetData.cells.map((c) => [c.cell_id, c]));
+  renderTableChips();
+  renderGrid();
+  resetInspector();
+  state.selected = null;
+  saveLocation();
+}
+
+function renderTableChips() {
+  const ts = state.sheetData.tables;
+  $("#tchips").innerHTML = ts.length
+    ? `<span class="hint" style="align-self:center">Tables on this sheet:</span>` + ts.map((t) =>
+      `<button class="tchip ${state.focusTable === t.table_id ? "on" : ""}" style="--tc:${tcolor(t)}" data-t="${t.table_id}">
+        ${esc(t.name)} <span class="m">${rangeA1(t)} · ${plural(t.row_end - t.row_start + 1, "row")}</span></button>`).join("")
+    : `<span class="hint">No table detected on this sheet.</span>`;
+  $$("#tchips [data-t]").forEach((b) => b.onclick = () => focusTable(+b.dataset.t));
+}
+
+// Structure of every position covered by a table: part (hdr/body/tot/gap), table, edges.
+function tableMap() {
+  const m = new Map();
+  for (const t of state.sheetData.tables) {
+    const top = t.header_top || t.header_row || t.row_start, bottom = t.total_row || t.row_end;
+    for (let r = top; r <= bottom; r++) for (let c = t.col_start; c <= t.col_end; c++) {
+      const part = r <= (t.header_row || 0) ? "hdr" : r === t.total_row ? "tot" : "body";
+      m.set(r + ":" + c, { t, part, top: r === top, bottom: r === bottom, left: c === t.col_start, right: c === t.col_end });
+    }
   }
+  return m;
+}
+
+function renderGrid() {
+  renderLegend();
+  const data = state.sheetData;
+  const issues = {};
+  for (const i of data.issues) if (!issues[i.cell_id] || i.severity === "high") issues[i.cell_id] = i.severity;
+  const params = new Map(data.params.map((p) => [p.cell_id, p]));
   const byPos = new Map(data.cells.map((c) => [c.row + ":" + c.col, c]));
-  const maxR = Math.min(Math.max(1, ...data.cells.map((c) => c.row)), MAX_ROWS);
-  const maxC = Math.min(Math.max(1, ...data.cells.map((c) => c.col)), MAX_COLS);
+  const tmap = tableMap();
+  const extentR = Math.max(1, ...data.cells.map((c) => c.row), ...data.tables.map((t) => t.total_row || t.row_end));
+  const extentC = Math.max(1, ...data.cells.map((c) => c.col), ...data.tables.map((t) => t.col_end));
+  const maxR = Math.min(extentR, MAX_ROWS), maxC = Math.min(extentC, MAX_COLS);
+  const structure = state.mode === "structure";
   let h = `<table class="grid"><thead><tr><th></th>`;
   for (let c = 1; c <= maxC; c++) h += `<th>${colName(c)}</th>`;
   h += `</tr></thead><tbody>`;
@@ -304,81 +572,169 @@ async function openSheet(name) {
     h += `<tr><th class="rh">${r}</th>`;
     for (let c = 1; c <= maxC; c++) {
       const cell = byPos.get(r + ":" + c);
-      if (!cell) { h += `<td></td>`; continue; }
-      const cls = [cell.role];
-      if (typeof (cell.vtype === "formula" ? cell.cached : cell.value) === "number") cls.push("num");
-      if (issues[cell.cell_id] === "high" || issues[cell.cell_id] === "medium") cls.push("iss-" + issues[cell.cell_id]);
+      const tm = tmap.get(r + ":" + c);
+      const cls = [], shadows = [];
+      let style = "";
+      if (tm) {
+        style += `--tc:${tcolor(tm.t)};`;
+        if (tm.top) shadows.push("inset 0 2px 0 var(--tc)");
+        if (tm.bottom) shadows.push("inset 0 -2px 0 var(--tc)");
+        if (tm.left) shadows.push("inset 2px 0 0 var(--tc)");
+        if (tm.right) shadows.push("inset -2px 0 0 var(--tc)");
+        if (structure) {
+          cls.push("s-" + tm.part);
+          if (tm.t.key_col === c && tm.part === "body") cls.push("s-key");
+        } else if (tm.part === "hdr") cls.push("s-key");
+      }
+      if (cell) {
+        if (!structure) cls.push(cell.role);
+        else if (!tm) cls.push(params.has(cell.cell_id) ? "param" : cell.role === "output" ? "output" : cell.role === "label" ? "label" : cell.role === "orphan" ? "orphan" : "");
+        if (typeof shown(cell) === "number") cls.push("num");
+        const sev = issues[cell.cell_id];
+        if (sev === "high") shadows.push("inset 0 0 0 2px var(--high)");
+        if (sev === "medium") shadows.push("inset 0 0 0 2px var(--medium)");
+      }
+      if (shadows.length) style += `box-shadow:${shadows.join(",")};`;
+      if (!cell) { h += `<td class="${cls.join(" ")}" style="${style}"></td>`; continue; }
       let body;
-      if (cell.vtype === "formula") {
-        body = cell.cached !== null && cell.cached !== undefined ? esc(fmt(cell.cached, cell.number_format)) : `<span class="f">ƒ ${esc(cell.formula.slice(1))}</span>`;
-      } else body = esc(fmt(cell.value, cell.number_format));
-      h += `<td class="${cls.join(" ")}" data-id="${esc(cell.cell_id)}" title="${esc(cell.semantic || cell.a1)}">${body}</td>`;
+      if (cell.vtype === "formula" && (state.showFormulas || cell.cached === null || cell.cached === undefined)) {
+        body = state.showFormulas ? esc(cell.formula) : `<span class="f">ƒ ${esc(cell.formula.slice(1))}</span>`;
+        if (state.showFormulas) cls.push("ftext");
+      } else body = esc(fmt(shown(cell), cell.number_format));
+      const p = params.get(cell.cell_id);
+      const tip = cell.semantic || (p ? "params." + p.name : cell.a1);
+      h += `<td class="${cls.join(" ")}" style="${style}" data-id="${esc(cell.cell_id)}" title="${esc(tip)}">${body}</td>`;
     }
     h += `</tr>`;
   }
   h += `</tbody></table>`;
-  const capped = data.cells.some((c) => c.row > MAX_ROWS || c.col > MAX_COLS);
+  const capped = extentR > MAX_ROWS || extentC > MAX_COLS;
   $("#grid-wrap").innerHTML = h + (capped ? `<div class="hint" style="padding:8px">Showing only the first ${MAX_ROWS} rows × ${MAX_COLS} columns.</div>` : "");
-  $("#grid-wrap").querySelectorAll("td[data-id]").forEach((td) => td.onclick = () => selectCell(td.dataset.id));
+  $$("#grid-wrap td[data-id]").forEach((td) => td.onclick = () => selectCell(td.dataset.id));
+  if (state.selected && state.cells.has(state.selected)) markSelection(state.selected, state.lastDetail);
 }
 
-function sheetOf(cellId) {
-  const i = cellId.lastIndexOf("!");
-  let s = cellId.slice(0, i);
+function resetInspector() {
+  $("#inspector").innerHTML = `<div class="hint">Click a cell to see where it sits (table, row, field), its formula, the calculation it belongs to, its issues and its calculation chain.<br><br>Click a table above the grid to see its header, key column and fields.</div>`;
+}
+
+function focusTable(id) {
+  const t = state.sheetData.tables.find((x) => x.table_id === id);
+  if (!t) return;
+  state.focusTable = id;
+  renderTableChips();
+  const top = t.header_top || t.header_row || t.row_start;
+  const tdAt = (r, c) => $(`#grid-wrap tbody tr:nth-child(${r}) td:nth-of-type(${c})`);
+  tdAt(top, t.col_start)?.scrollIntoView({ block: "center", inline: "nearest" });
+  for (let r = top; r <= (t.total_row || t.row_end); r++) for (let c = t.col_start; c <= t.col_end; c++) {
+    const td = tdAt(r, c); if (td) { td.classList.remove("flash"); void td.offsetWidth; td.classList.add("flash"); }
+  }
+  const go = (r, c) => `<a data-go="${esc(cellId(r, c))}">${colName(c)}${r}</a>`;
+  let h = `<h3><span style="color:${tcolor(t)}">■</span> ${esc(t.name)}</h3>
+    <div class="sem">${esc(state.sheet)}!${rangeA1(t)}</div>
+    <div class="where">${t.source === "listobject" ? "Declared in Excel as a Table." : `Detected from the layout${t.confidence != null ? `, confidence ${Number(t.confidence).toFixed(2)}` : ""}.`}
+    ${t.kind === "parameter_list" ? " Read as a list of parameters (label | value)." : ""}</div>
+    <dl class="kv">
+      <dt>Header</dt><dd>${t.header_row ? (t.header_top ? `rows ${t.header_top}–${t.header_row}` : `row ${t.header_row}`) : "none"}</dd>
+      <dt>Body</dt><dd>rows ${t.row_start}–${t.row_end}</dd>
+      <dt>Total row</dt><dd>${t.total_row ? go(t.total_row, t.col_start) : "none"}</dd>
+      <dt>Key</dt><dd>${t.key_col ? `column ${colName(t.key_col)}: rows are addressed as <code>${esc(t.name)}["…"]</code>` : "none (rows addressed by position)"}</dd>
+    </dl>
+    <div class="sec">Fields (${t.fields.length})</div>
+    <table class="list"><thead><tr><th>Col</th><th>Field</th><th>Header</th><th>Kind</th></tr></thead><tbody>` +
+    t.fields.map((f) => `<tr><td>${colName(f.col)}</td><td class="mono">${esc(f.name)}${f.unit ? ` <span class="hint">(${esc(f.unit)})</span>` : ""}</td>
+      <td>${esc(f.header)}</td><td>${f.kind === "derived" ? "ƒ calculated" : "data"}</td></tr>`).join("") + `</tbody></table>`;
+  $("#inspector").innerHTML = h;
+  $$("#inspector [data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
+}
+
+function cellId(r, c) {
+  const s = state.sheet;
+  return (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(s) ? s : `'${s.replace(/'/g, "''")}'`) + "!" + colName(c) + r;
+}
+function sheetOf(id) {
+  const i = id.lastIndexOf("!");
+  let s = id.slice(0, i);
   if (s.startsWith("'")) s = s.slice(1, -1).replace(/''/g, "'");
   return s;
 }
 
-async function goToCell(cellId) {
-  showView("sheet");
-  const sh = sheetOf(cellId);
+async function goToCell(id) {
+  if (currentView() !== "sheet") await showView("sheet");
+  const sh = sheetOf(id);
   if (sh !== state.sheet) await openSheet(sh);
-  await selectCell(cellId);
-  document.querySelector(`td[data-id="${CSS.escape(cellId)}"]`)?.scrollIntoView({ block: "center", inline: "center" });
+  await selectCell(id);
+  document.querySelector(`td[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "center", inline: "nearest" });
+}
+
+function markSelection(id, d) {
+  const c = d.cell;
+  const direct = new Set(d.precedents.filter((p) => p.depth === 1).map((p) => p.cell_id));
+  $$("#grid-wrap td[data-id]").forEach((td) => {
+    const cell = state.cells.get(td.dataset.id);
+    td.classList.toggle("sel", td.dataset.id === id);
+    td.classList.toggle("in-group", !!(c.group_id && cell && cell.group_id === c.group_id && d.group && d.group.n_cells > 1));
+    td.classList.toggle("prec", direct.has(td.dataset.id));
+  });
+}
+
+function whereText(c) {
+  const t = c.table_id != null && state.sheetData.tables.find((x) => x.table_id === c.table_id);
+  const p = state.sheetData.params.find((x) => x.cell_id === c.cell_id);
+  if (p) return `Parameter <b class="mono">params.${esc(p.name)}</b>${p.unit ? ` in ${esc(p.unit)}` : ""}, named from the label “${esc(p.label || "")}”.`;
+  if (!t) {
+    if (c.role === "output") return "A result outside any table: a formula nothing else uses.";
+    if (c.role === "label") return "A label (text no formula uses).";
+    if (c.role === "orphan") return "A value no formula uses.";
+    return "Outside any table.";
+  }
+  const f = t.fields.find((x) => x.col === c.col);
+  const swatch = `<span style="color:${tcolor(t)}">■</span>`;
+  if (c.row <= (t.header_row || 0)) return `${swatch} Header of table <b>${esc(t.name)}</b>${f ? `, naming field <b class="mono">${esc(f.name)}</b>` : ""}.`;
+  if (c.row === t.total_row) return `${swatch} Total row of table <b>${esc(t.name)}</b>${f ? `, field <b class="mono">${esc(f.name)}</b>` : ""}.`;
+  const key = t.key_col ? state.sheetData.cells.find((x) => x.row === c.row && x.col === t.key_col) : null;
+  return `${swatch} Table <b>${esc(t.name)}</b> → row ${key ? `<b>“${esc(fmt(shown(key)))}”</b>` : c.row} → field <b class="mono">${esc(f ? f.name : colName(c.col))}</b>${f && f.kind === "derived" ? " (calculated)" : ""}.`;
 }
 
 async function selectCell(id) {
   state.selected = id;
-  const d = await api(`/api/workbooks/${state.wid}/cell?id=${encodeURIComponent(id)}`);
+  const d = state.lastDetail = await api(`/api/workbooks/${state.wid}/cell?id=${encodeURIComponent(id)}`);
   const c = d.cell;
-  const direct = new Set(d.precedents.filter((p) => p.depth === 1).map((p) => p.cell_id));
-  document.querySelectorAll("#grid-wrap td[data-id]").forEach((td) => {
-    const cell = state.cells.get(td.dataset.id);
-    td.classList.toggle("sel", td.dataset.id === id);
-    td.classList.toggle("in-group", !!(c.group_id && cell && cell.group_id === c.group_id && d.group.n_cells > 1));
-    td.classList.toggle("prec", direct.has(td.dataset.id));
-  });
-
+  markSelection(id, d);
+  saveLocation();
   const link = (cid, label) => `<a data-go="${esc(cid)}">${esc(label || cid)}</a>`;
-  let h = `<h3>${esc(c.cell_id)} <span class="badge ${esc(c.role)}">${esc(c.role)}</span></h3>`;
-  h += `<div class="sem">${esc(c.semantic || "—")}</div><dl class="kv">`;
+  let h = `<h3>${esc(c.cell_id)} <span class="badge ${esc(c.role)}">${esc(c.role === "output" ? "result" : c.role)}</span></h3>`;
+  h += `<div class="sem">${esc(c.semantic || "—")}</div>`;
+  if (c.vtype) h += `<div class="where">${whereText(c)}</div>`;
+  h += `<dl class="kv">`;
   if (c.vtype === "formula") {
     h += `<dt>Formula</dt><dd><code>${esc(c.formula)}</code></dd>`;
-    h += `<dt>R1C1</dt><dd><code>${esc(c.r1c1)}</code></dd>`;
-    h += `<dt>Cached</dt><dd>${c.cached === null ? '<span class="hint">none (workbook was not recalculated by Excel)</span>' : esc(fmt(c.cached, c.number_format))}</dd>`;
+    h += `<dt>Pattern</dt><dd><code>${esc(c.r1c1)}</code> <span class="hint">(R1C1: relative to this cell)</span></dd>`;
+    h += `<dt>Value</dt><dd>${c.cached === null ? '<span class="hint">not calculated yet (the file was not saved by Excel)</span>' : esc(fmt(c.cached, c.number_format))}</dd>`;
   } else if (c.vtype) {
     h += `<dt>Value</dt><dd>${esc(fmt(c.value, c.number_format))}</dd><dt>Type</dt><dd>${esc(c.vtype)}</dd>`;
   }
   if (d.group) {
-    h += `<dt>Group</dt><dd>#${d.group.group_id} · ${d.group.n_cells} cells (${link(d.group.anchor)} → ${link(d.group.last)})</dd>`;
+    h += `<dt>Calculation</dt><dd>${d.group.n_cells > 1 ? `same formula as ${d.group.n_cells - 1} other cells, ${link(d.group.anchor)} → ${link(d.group.last)}` : "used only here"} <span class="hint">(group #${d.group.group_id})</span></dd>`;
   }
   h += `</dl>`;
   if (d.issues.length) {
     h += `<div class="sec">Issues</div>` + d.issues.map((i) =>
-      `<div class="issue ${esc(i.severity)}"><span class="badge ${esc(i.severity)}">${esc(i.kind)}</span><div>${esc(i.detail)}</div></div>`).join("");
+      `<div class="issue ${esc(i.severity)}"><span class="badge ${esc(i.severity)}">${esc(i.kind.replace(/_/g, " "))}</span>
+        <div class="why">${esc(ISSUE_HELP[i.kind] || "")}</div><div>${esc(i.detail)}</div></div>`).join("");
   }
   if (d.precedents.length) {
-    const shown = d.precedents.slice(0, 150);
-    h += `<div class="sec">Depends on (${d.precedents.length})</div><div class="tree">` + shown.map((p) =>
+    const list = d.precedents.slice(0, 150);
+    h += `<div class="sec">Calculated from (${d.precedents.length})</div><div class="tree">` + list.map((p) =>
       `<div style="padding-left:${(p.depth - 1) * 14}px">${link(p.cell_id)} <span class="s">${esc(p.semantic || "")}</span></div>`).join("") +
-      (d.precedents.length > shown.length ? `<div class="s">… and ${d.precedents.length - shown.length} more cells</div>` : "") + `</div>`;
+      (d.precedents.length > list.length ? `<div class="s">… and ${d.precedents.length - list.length} more cells</div>` : "") + `</div>`;
   }
   if (d.dependents.length) {
     h += `<div class="sec">Used by (${d.dependents.length})</div><div class="tree">` + d.dependents.slice(0, 80).map((p) =>
       `<div>${link(p.cell_id)} <span class="s">${esc(p.semantic || "")}</span></div>`).join("") + `</div>`;
   }
   $("#inspector").innerHTML = h;
-  $("#inspector").querySelectorAll("[data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
+  $$("#inspector [data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
 }
 
 // ---------------- issues ----------------
@@ -388,58 +744,78 @@ async function renderIssues() {
   all.forEach((i) => counts[i.severity]++);
   $("#issue-filters").innerHTML = ["all", "high", "medium", "low"].map((k) =>
     `<button class="btn ${state.issueFilter === k ? "on" : ""}" data-k="${k}">${k} (${counts[k]})</button>`).join("");
-  $("#issue-filters").querySelectorAll("button").forEach((b) => b.onclick = () => { state.issueFilter = b.dataset.k; renderIssues(); });
+  $$("#issue-filters button").forEach((b) => b.onclick = () => { state.issueFilter = b.dataset.k; renderIssues(); });
   const rows = all.filter((i) => state.issueFilter === "all" || i.severity === state.issueFilter);
-  $("#issues").innerHTML = rows.length ? `<table class="list"><thead><tr><th>Severity</th><th>Kind</th><th>Cell</th><th>Meaning</th><th>Detail</th></tr></thead><tbody>` +
-    rows.map((i) => `<tr><td><span class="badge ${esc(i.severity)}">${esc(i.severity)}</span></td><td>${esc(i.kind)}</td>
+  $("#issues").innerHTML = rows.length ? `<table class="list"><thead><tr><th>Severity</th><th>Problem</th><th>Cell</th><th>Readable address</th><th>Detail</th></tr></thead><tbody>` +
+    rows.map((i) => `<tr><td><span class="badge ${esc(i.severity)}">${esc(i.severity)}</span></td>
+      <td><b>${esc(i.kind.replace(/_/g, " "))}</b><div class="hint">${esc(ISSUE_HELP[i.kind] || "")}</div></td>
       <td>${i.cell_id ? `<a data-go="${esc(i.cell_id)}">${esc(i.cell_id)}</a>` : ""}</td>
       <td class="mono">${esc(i.semantic || "")}</td><td>${esc(i.detail)}</td></tr>`).join("") + `</tbody></table>`
     : `<div class="empty">No issues found.</div>`;
-  $("#issues").querySelectorAll("[data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
+  $$("#issues [data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
 }
 
-// ---------------- model ----------------
+// ---------------- tables & names ----------------
 async function renderModel() {
   const m = await api(`/api/workbooks/${state.wid}/model`);
   const go = (cid) => `<a data-go="${esc(cid)}">${esc(cid)}</a>`;
-  let h = `<h3 class="h">Parameters (${m.params.length})</h3>`;
-  h += m.params.length ? `<table class="list"><thead><tr><th>Name</th><th>Source label</th><th>Value</th><th>Unit</th><th>Domain</th><th>Cell</th></tr></thead><tbody>` +
+  let h = `<h3 class="h">Tables (${m.tables.length})</h3><p class="h-sub">Each table cell is addressable as <code>table["row key"].field</code>; total rows as <code>table.total.field</code>.</p>`;
+  for (const t of m.tables) {
+    h += `<div class="card" style="--tc:${tcolor(t)}"><h4><span class="dot"></span>${esc(t.name)}
+        <button class="btn small" data-show-table="${t.table_id}" data-sheet="${esc(t.sheet)}">Show on sheet</button></h4>
+      <div class="m">${esc(t.sheet)}!${rangeA1(t)} · ${plural(t.n_rows, "row")} · ${t.source === "listobject" ? "Excel Table" : "detected" + (t.confidence != null ? ` (confidence ${Number(t.confidence).toFixed(2)})` : "")}${t.header_top ? ` · header rows ${t.header_top}–${t.header_row}` : ""}${t.kind !== "data" ? " · " + esc(t.kind.replace("_", " ")) : ""}${t.key_col ? " · key column " + colName(t.key_col) : ""}${t.total_row ? " · total row " + t.total_row : ""}</div>
+      <table class="list"><thead><tr><th>Col</th><th>Field</th><th>Header</th><th>Unit</th><th>Kind</th><th>Formula pattern (R1C1)</th></tr></thead><tbody>` +
+      t.fields.map((f) => `<tr><td>${colName(f.col)}</td><td class="mono">${esc(f.name)}</td><td>${esc(f.header)}</td><td>${esc(f.unit || "")}</td>
+        <td>${f.kind === "derived" ? "ƒ calculated" : "data"}</td><td class="mono">${esc(f.r1c1 || "")}</td></tr>`).join("") + `</tbody></table></div>`;
+  }
+  if (!m.tables.length) h += `<div class="hint">No tables detected.</div>`;
+
+  h += `<h3 class="h" style="margin-top:24px">Parameters (${m.params.length})</h3><p class="h-sub">Input values outside tables, named from the label beside or above them (or from a defined name).</p>`;
+  h += m.params.length ? `<table class="list"><thead><tr><th>Name</th><th>From label</th><th>Value</th><th>Unit</th><th>Allowed values</th><th>Cell</th></tr></thead><tbody>` +
     m.params.map((p) => `<tr><td class="mono">params.${esc(p.name)}</td><td>${esc(p.label || "")}</td><td>${esc(fmt(p.value))}</td>
       <td>${esc(p.unit || "")}</td><td class="mono">${p.domain ? esc(`${p.domain.type} ${p.domain.operator || ""} ${p.domain.formula1 ?? ""}${p.domain.formula2 ? "…" + p.domain.formula2 : ""}`) : ""}</td>
       <td>${go(p.cell_id)}</td></tr>`).join("") + `</tbody></table>` : `<div class="hint">No parameters found.</div>`;
 
-  h += `<h3 class="h" style="margin-top:24px">Tables (${m.tables.length})</h3>`;
-  for (const t of m.tables) {
-    h += `<div class="card"><h4>${esc(t.name)}</h4><div class="m">${esc(t.sheet)} · ${t.n_rows} rows · ${esc(t.source)}${t.kind !== "data" ? " · " + esc(t.kind) : ""}${t.key_col ? " · key: column " + colName(t.key_col) : ""}${t.total_row ? " · total row " + t.total_row : ""}</div>
-      <table class="list"><thead><tr><th>Column</th><th>Field</th><th>Header</th><th>Unit</th><th>Kind</th><th>Formula (R1C1)</th></tr></thead><tbody>` +
-      t.fields.map((f) => `<tr><td>${colName(f.col)}</td><td class="mono">${esc(f.name)}</td><td>${esc(f.header)}</td><td>${esc(f.unit || "")}</td>
-        <td>${f.kind === "derived" ? "ƒ derived" : "data"}</td><td class="mono">${esc(f.r1c1 || "")}</td></tr>`).join("") + `</tbody></table></div>`;
-  }
-
   if (m.outputs.length) {
-    h += `<h3 class="h">Outputs outside tables (${m.outputs.length})</h3><table class="list"><thead><tr><th>Cell</th><th>Name</th><th>Formula</th></tr></thead><tbody>` +
+    h += `<h3 class="h" style="margin-top:24px">Results outside tables (${m.outputs.length})</h3><p class="h-sub">Formulas nothing else uses: what the workbook produces.</p><table class="list"><thead><tr><th>Cell</th><th>Name</th><th>Formula</th></tr></thead><tbody>` +
       m.outputs.map((o) => `<tr><td>${go(o.cell_id)}</td><td class="mono">${esc(o.semantic || "")}</td><td class="mono">${esc(o.formula)}</td></tr>`).join("") + `</tbody></table>`;
   }
 
-  h += `<h3 class="h" style="margin-top:24px">Formula groups (${m.groups.length})</h3><table class="list"><thead><tr><th>#</th><th>Range</th><th>Cells</th><th>Axis</th><th>R1C1</th></tr></thead><tbody>` +
-    m.groups.map((g) => `<tr><td>${g.group_id}</td><td>${go(g.anchor)}${g.n_cells > 1 ? " → " + go(g.last) : ""}</td><td>${g.n_cells}</td><td>${esc(g.axis)}</td><td class="mono">${esc(g.r1c1)}</td></tr>`).join("") + `</tbody></table>`;
+  h += `<h3 class="h" style="margin-top:24px">Lookups between tables (${m.relations.length})</h3><p class="h-sub">Read from VLOOKUP, INDEX/MATCH, XLOOKUP and SUMIFS-style formulas: which value is matched against which key.</p>`;
+  const side = (table, field, range) => esc(table && field ? `${table}.${field}` : range || "");
+  h += m.relations.length ? `<table class="list"><thead><tr><th>Cell</th><th>Function</th><th>Value from</th><th>Matched against</th><th>Returns</th><th>Match</th><th>Cells</th></tr></thead><tbody>` +
+    m.relations.map((r) => `<tr><td>${go(r.cell_id)}</td><td class="mono">${esc(r.function)}</td>
+      <td class="mono">${side(r.from_table, r.from_field, r.value)}</td>
+      <td class="mono">${r.key_range ? side(r.to_table, r.key_field, r.key_range) : "(computed range)"}</td>
+      <td class="mono">${r.return_range ? side(r.to_table, r.return_field, r.return_range) : "—"}</td>
+      <td>${esc(r.match)}</td><td>${r.n_cells}</td></tr>`).join("") + `</tbody></table>`
+    : `<div class="hint">No lookups or conditional aggregates found.</div>`;
+
+  h += `<h3 class="h" style="margin-top:24px">Calculations (${m.groups.length})</h3><p class="h-sub">Formulas grouped by the computation they repeat (same R1C1 pattern in adjacent cells).</p><table class="list"><thead><tr><th>#</th><th>Range</th><th>Cells</th><th>Direction</th><th>Pattern (R1C1)</th></tr></thead><tbody>` +
+    m.groups.map((g) => `<tr><td>${g.group_id}</td><td>${go(g.anchor)}${g.n_cells > 1 ? " → " + go(g.last) : ""}</td><td>${g.n_cells}</td><td>${g.axis === "col" ? "down a column" : g.axis === "row" ? "across a row" : "single cell"}</td><td class="mono">${esc(g.r1c1)}</td></tr>`).join("") + `</tbody></table>`;
   $("#view-model").innerHTML = h;
-  $("#view-model").querySelectorAll("[data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
+  $$("#view-model [data-go]").forEach((a) => a.onclick = () => goToCell(a.dataset.go));
+  $$("#view-model [data-show-table]").forEach((b) => b.onclick = async () => {
+    await showView("sheet");
+    if (state.sheet !== b.dataset.sheet) await openSheet(b.dataset.sheet);
+    focusTable(+b.dataset.showTable);
+  });
 }
 
 // ---------------- SQL ----------------
 const PRESETS = {
+  "Cells by readable address": "SELECT semantic, cell_id, value, formula\nFROM cells WHERE semantic IS NOT NULL\nORDER BY sheet, row, col LIMIT 200",
+  "Tables and fields": "SELECT t.name AS table_name, f.name AS field, f.header, f.unit, f.kind, f.r1c1\nFROM fields f JOIN tables t USING(table_id)\nORDER BY t.table_id, f.col",
   "Hard-coded constants": "SELECT value, COUNT(*) AS n_cells, MIN(cell_id) AS example\nFROM literals\nWHERE value NOT IN (0, 1, 100) AND (function IS NULL OR function NOT IN ('VLOOKUP','INDEX','MATCH','ROUND'))\nGROUP BY value ORDER BY n_cells DESC",
   "High-severity issues": "SELECT cell_id, kind, detail FROM issues WHERE severity = 'high'",
-  "Calculation chain of a cell": "WITH RECURSIVE trace(cell_id, depth) AS (\n  SELECT 'Quote!J2', 0\n  UNION SELECT d.src_cell, t.depth + 1 FROM deps d JOIN trace t ON d.dst_cell = t.cell_id\n)\nSELECT t.cell_id, MIN(depth) AS depth, c.semantic, c.formula\nFROM trace t LEFT JOIN cells c USING(cell_id)\nGROUP BY t.cell_id ORDER BY depth",
   "Most-used parameters": "SELECT p.name, COUNT(DISTINCT d.dst_cell) AS direct_dependents\nFROM params p JOIN deps d ON d.src_cell = p.cell_id\nGROUP BY p.name ORDER BY direct_dependents DESC",
   "Schema": "SELECT name, sql FROM sqlite_master WHERE type IN ('table','view') ORDER BY name",
 };
 function initSql() {
   if (!$("#presets").children.length) {
     $("#presets").innerHTML = Object.keys(PRESETS).map((k) => `<button class="btn" data-k="${esc(k)}">${esc(k)}</button>`).join("");
-    $("#presets").querySelectorAll("button").forEach((b) => b.onclick = () => { $("#sql").value = PRESETS[b.dataset.k]; runSql(); });
-    $("#sql").value = PRESETS["Hard-coded constants"];
+    $$("#presets button").forEach((b) => b.onclick = () => { $("#sql").value = PRESETS[b.dataset.k]; runSql(); });
+    $("#sql").value = PRESETS["Cells by readable address"];
     $("#sql").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) runSql(); };
     $("#run-sql").onclick = runSql;
   }
@@ -453,8 +829,29 @@ async function runSql() {
   } catch (e) { $("#sql-out").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
 
+// ---------------- location (#wb=…&view=…&sheet=…&cell=…) ----------------
+function saveLocation() {
+  if (!state.wid) return;
+  const p = new URLSearchParams({ wb: state.wid, view: currentView() });
+  if (currentView() === "sheet" && state.sheet) p.set("sheet", state.sheet);
+  if (currentView() === "sheet" && state.selected) p.set("cell", state.selected);
+  history.replaceState(null, "", "#" + p.toString());
+}
+
 // ---------------- boot ----------------
-loadList().then((list) => list.length && openWorkbook(list[0].id)).catch((e) => status("Error: " + e.message));
+(async () => {
+  try {
+    const list = await loadList();
+    const p = new URLSearchParams(location.hash.slice(1));
+    const wid = list.some((w) => w.id === p.get("wb")) ? p.get("wb") : list[0]?.id;
+    if (!wid) return;
+    await openWorkbook(wid);
+    const view = p.get("view");
+    if (p.get("cell")) await goToCell(p.get("cell"));
+    else if (view === "sheet" && p.get("sheet")) { await showView("sheet"); await openSheet(p.get("sheet")); }
+    else if (view && view !== "overview") await showView(view);
+  } catch (e) { status("Error: " + e.message); }
+})();
 </script>
 </body>
 </html>

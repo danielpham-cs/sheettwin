@@ -17,16 +17,17 @@ import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from ..build import build_ir
 from ..sample import make_quotation
-from ..store import TRACE_SQL
+from ..store import IR_SCHEMA, TRACE_SQL
 
 STATIC = Path(__file__).parent / "static"
 _ID_RE = re.compile(r"^[0-9a-f]{12}$")
 MAX_SQL_ROWS = 500
+MAX_LAYOUT_CELLS = 30_000  # per sheet, for the overview minimaps
 
 app = FastAPI(title="SheetTwin · SheetIR")
 
@@ -117,15 +118,38 @@ def summary(wid: str):
             "groups": "SELECT COUNT(*) FROM formula_groups",
             "tables": "SELECT COUNT(*) FROM tables",
             "params": "SELECT COUNT(*) FROM params",
+            "relations": "SELECT COUNT(*) FROM relations",
             "outputs": "SELECT COUNT(*) FROM cells WHERE role='output'",
+            "inputs": "SELECT COUNT(*) FROM cells WHERE role='input'",
+            "edges": "SELECT COUNT(*) FROM edges",
+            "names": "SELECT COUNT(*) FROM names",
+            "issues": "SELECT COUNT(*) FROM issues",
+            "issues_high": "SELECT COUNT(*) FROM issues WHERE severity='high'",
         }.items()
     }
+    sheets = _loads(meta.get("sheets")) or [r["sheet"] for r in _rows(con, "SELECT DISTINCT sheet FROM cells")]
+    per_sheet = {r["sheet"]: r for r in _rows(
+        con, "SELECT sheet, COUNT(*) AS cells, SUM(vtype='formula') AS formulas, MAX(row) AS max_row, "
+             "MAX(col) AS max_col FROM cells GROUP BY sheet")}
+    tables_per = dict(con.execute("SELECT sheet, COUNT(*) FROM tables GROUP BY sheet").fetchall())
+    issues_per = {r["sheet"]: r for r in _rows(
+        con, "SELECT c.sheet, COUNT(*) AS issues, SUM(i.severity='high') AS high FROM issues i "
+             "JOIN cells c USING(cell_id) GROUP BY c.sheet")}
+    sheet_stats = [{"sheet": n, "cells": per_sheet.get(n, {}).get("cells", 0),
+                    "formulas": per_sheet.get(n, {}).get("formulas", 0) or 0,
+                    "max_row": per_sheet.get(n, {}).get("max_row", 0), "max_col": per_sheet.get(n, {}).get("max_col", 0),
+                    "tables": tables_per.get(n, 0), "issues": issues_per.get(n, {}).get("issues", 0),
+                    "issues_high": issues_per.get(n, {}).get("high", 0) or 0} for n in sheets]
     return {
         "id": wid,
         "name": Path(meta["source"]).name,
         "sha256": meta["sha256"],
         "built_at": meta.get("built_at"),
-        "sheets": _loads(meta.get("sheets")) or [r["sheet"] for r in _rows(con, "SELECT DISTINCT sheet FROM cells")],
+        "sheetir_version": meta.get("sheetir_version"),
+        "table_scorer": meta.get("table_scorer", "hand"),
+        "stale": meta.get("ir_schema") != str(IR_SCHEMA),
+        "sheets": sheets,
+        "sheet_stats": sheet_stats,
         "counts": counts,
         "checks": _rows(con, "SELECT name, passed, severity, detail FROM checks"),
         "issues_by_kind": _rows(con, "SELECT kind, severity, COUNT(*) AS n FROM issues GROUP BY kind, severity "
@@ -142,7 +166,70 @@ def sheet(wid: str, name: str):
         c["value"], c["cached"] = _loads(c["value"]), _loads(c["cached"])
     issues = _rows(con, "SELECT i.cell_id, i.kind, i.severity FROM issues i JOIN cells c USING(cell_id) "
                         "WHERE c.sheet = ?", name)
-    return {"cells": cells, "issues": issues}
+    tables = _rows(con, "SELECT * FROM tables WHERE sheet = ? ORDER BY table_id", name)
+    for t in tables:
+        t["fields"] = _rows(con, "SELECT col, header, name, unit, kind FROM fields WHERE table_id = ? ORDER BY col",
+                            t["table_id"])
+    params = _rows(con, "SELECT p.cell_id, p.name, p.label, p.unit FROM params p JOIN cells c USING(cell_id) "
+                        "WHERE c.sheet = ?", name)
+    return {"cells": cells, "issues": issues, "tables": tables, "params": params}
+
+
+@app.get("/api/workbooks/{wid}/layout")
+def layout(wid: str):
+    """Compact per-sheet maps for the overview: [row, col, role, table_id, issue severity] per cell."""
+    con = _connect(wid)
+    sev = {r["cell_id"]: r["sev"] for r in _rows(
+        con, "SELECT cell_id, MIN(CASE severity WHEN 'high' THEN 'high' WHEN 'medium' THEN 'medium' ELSE 'low' END) "
+             "AS sev FROM issues WHERE cell_id IS NOT NULL GROUP BY cell_id")}
+    out = {}
+    for (name,) in con.execute("SELECT DISTINCT sheet FROM cells").fetchall():
+        rows = con.execute("SELECT cell_id, row, col, role, table_id FROM cells WHERE sheet = ? LIMIT ?",
+                           (name, MAX_LAYOUT_CELLS + 1)).fetchall()
+        out[name] = {
+            "cells": [[r[1], r[2], r[3], r[4], sev.get(r[0])] for r in rows[:MAX_LAYOUT_CELLS]],
+            "truncated": len(rows) > MAX_LAYOUT_CELLS,
+            "tables": _rows(con, "SELECT table_id, name, row_start, row_end, col_start, col_end, header_row, total_row "
+                                 "FROM tables WHERE sheet = ?", name),
+        }
+    return out
+
+
+@app.get("/api/workbooks/{wid}/db")
+def download_db(wid: str):
+    con = _connect(wid)
+    name = Path(dict(con.execute("SELECT key, value FROM meta").fetchall())["source"]).stem
+    con.close()
+    return FileResponse(_db_path(wid), media_type="application/vnd.sqlite3", filename=f"{name}.sheetir.db")
+
+
+def _source_file(wid: str) -> Path:
+    _db_path(wid)
+    files = [p for p in (data_dir() / wid).iterdir() if p.suffix.lower() in (".xlsx", ".xlsm")]
+    if not files:
+        raise HTTPException(404, "the original workbook is no longer stored")
+    return files[0]
+
+
+@app.post("/api/workbooks/{wid}/rebuild")
+def rebuild(wid: str):
+    """Parse the stored copy again with the current SheetIR (after an upgrade)."""
+    src = _source_file(wid)
+    try:
+        res = build_ir(src, data_dir() / wid / "ir.db")
+    except Exception as exc:
+        raise HTTPException(422, f"could not parse workbook: {exc}") from exc
+    return {"id": wid, "counts": res.counts}
+
+
+@app.delete("/api/workbooks/{wid}")
+def delete(wid: str):
+    """Remove the stored copy and its database (the user's original file is never touched)."""
+    folder = _db_path(wid).parent
+    for p in folder.iterdir():
+        p.unlink()
+    folder.rmdir()
+    return {"deleted": wid}
 
 
 @app.get("/api/workbooks/{wid}/cell")
@@ -178,7 +265,7 @@ def issues(wid: str):
 
 @app.get("/api/workbooks/{wid}/model")
 def model(wid: str):
-    """Tables with fields, parameters and outputs: the semantic view of the workbook."""
+    """Tables with fields, parameters, outputs and relations: the semantic view of the workbook."""
     con = _connect(wid)
     tables = _rows(con, "SELECT * FROM tables ORDER BY table_id")
     for t in tables:
@@ -193,7 +280,15 @@ def model(wid: str):
                          "ORDER BY sheet, row, col")
     groups = _rows(con, "SELECT group_id, sheet, axis, anchor, last, n_cells, r1c1 FROM formula_groups "
                         "ORDER BY n_cells DESC, group_id")
-    return {"tables": tables, "params": params, "outputs": outputs, "groups": groups}
+    # One row per lookup/aggregate pattern; MIN() makes SQLite take cell_id from the first relation.
+    relations = _rows(con, "SELECT MIN(r.relation_id) AS first, r.cell_id, r.function, r.kind, r.match, r.value, "
+                           "ft.name AS from_table, r.from_field, tt.name AS to_table, r.key_field, r.return_field, "
+                           "r.key_range, r.return_range, COUNT(*) AS n_cells FROM relations r "
+                           "LEFT JOIN tables ft ON ft.table_id = r.from_table "
+                           "LEFT JOIN tables tt ON tt.table_id = r.to_table "
+                           "GROUP BY r.group_id, r.function, r.kind, r.match, r.key_range, r.return_range "
+                           "ORDER BY n_cells DESC, first")
+    return {"tables": tables, "params": params, "outputs": outputs, "groups": groups, "relations": relations}
 
 
 class SqlRequest(BaseModel):

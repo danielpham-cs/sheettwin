@@ -6,6 +6,9 @@ import json
 import sqlite3
 from pathlib import Path
 
+# Bumped when the tables below change; the web UI offers to re-parse databases built with an older one.
+IR_SCHEMA = 2
+
 SCHEMA = """
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE cells(
@@ -22,11 +25,15 @@ CREATE TABLE literals(cell_id TEXT, value REAL, function TEXT);  -- function = e
 CREATE TABLE tables(
     table_id INT PRIMARY KEY, sheet TEXT, name TEXT, kind TEXT, source TEXT,
     header_row INT, row_start INT, row_end INT, col_start INT, col_end INT,
-    key_col INT, total_row INT);
+    key_col INT, total_row INT, header_top INT, confidence REAL);
 CREATE TABLE fields(
     field_id INTEGER PRIMARY KEY, table_id INT, col INT, header TEXT, name TEXT,
     unit TEXT, kind TEXT, r1c1 TEXT, number_format TEXT);
 CREATE TABLE params(param_id INTEGER PRIMARY KEY, cell_id TEXT, label TEXT, name TEXT, unit TEXT, domain TEXT);
+CREATE TABLE relations(
+    relation_id INTEGER PRIMARY KEY, cell_id TEXT, group_id INT, function TEXT, kind TEXT, match TEXT,
+    value TEXT, value_cell TEXT, key_range TEXT, return_range TEXT,
+    from_table INT, from_field TEXT, to_table INT, key_field TEXT, return_field TEXT);
 CREATE TABLE names(name TEXT, scope TEXT, refers_to TEXT);
 CREATE TABLE issues(issue_id INTEGER PRIMARY KEY, cell_id TEXT, group_id INT, kind TEXT, severity TEXT, detail TEXT);
 CREATE TABLE checks(name TEXT, passed INT, severity TEXT, detail TEXT);
@@ -34,6 +41,7 @@ CREATE TABLE checks(name TEXT, passed INT, severity TEXT, detail TEXT);
 CREATE INDEX ix_edges_dst ON edges(dst_cell);
 CREATE INDEX ix_edges_src ON edges(src_id);
 CREATE INDEX ix_range_cells ON range_cells(range_id);
+CREATE INDEX ix_relations_cell ON relations(cell_id);
 
 -- Cell-level dependency view: precedent -> dependent, ranges expanded.
 CREATE VIEW deps AS
@@ -41,6 +49,14 @@ CREATE VIEW deps AS
     UNION
     SELECT rc.cell_id, e.dst_cell, e.via FROM edges e
     JOIN range_cells rc ON rc.range_id = e.src_id WHERE e.src_kind = 'range';
+
+-- Table-level links: relations between detected tables, one row per distinct pattern.
+CREATE VIEW table_links AS
+    SELECT ft.name AS from_table, r.from_field, tt.name AS to_table, r.key_field, r.return_field,
+           r.function, r.kind, r.match, COUNT(*) AS n_cells, MIN(r.cell_id) AS example
+    FROM relations r JOIN tables tt ON tt.table_id = r.to_table
+    LEFT JOIN tables ft ON ft.table_id = r.from_table
+    GROUP BY ft.name, r.from_field, tt.name, r.key_field, r.return_field, r.function, r.kind, r.match;
 """
 
 TRACE_SQL = """

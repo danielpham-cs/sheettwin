@@ -21,7 +21,7 @@ def _cmd_sample(args) -> int:
 def _cmd_build(args) -> int:
     xlsx = Path(args.xlsx)
     db = Path(args.out) if args.out else xlsx.with_suffix(".sheetir.db")
-    res = build_ir(xlsx, db)
+    res = build_ir(xlsx, db, args.tables)
     print(f"SheetIR -> {res.db_path}")
     print("  " + ", ".join(f"{k}={v}" for k, v in res.counts.items()))
     print("checks:")
@@ -85,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.add_parser("build", help="parse a workbook into a SheetIR database")
     b.add_argument("xlsx")
     b.add_argument("-o", "--out")
+    b.add_argument("--tables", choices=["hand", "model"], default="hand",
+                   help="how header rows are recognized: hand-set weights (default) or the model trained on StatSheets")
     b.set_defaults(fn=_cmd_build)
 
     t = sub.add_parser("trace", help="show the precedent chain of a cell")

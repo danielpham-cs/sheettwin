@@ -24,6 +24,7 @@ class RawCell:
     cached: object  # value Excel last computed (None if never recalculated)
     number_format: str
     flags: list[str] = field(default_factory=list)
+    style: frozenset[str] = frozenset()  # header-like formatting: bold | fill | border_bottom
 
 
 @dataclass
@@ -78,6 +79,19 @@ def _vtype(cell) -> str:
     return "text"
 
 
+def _style(cell) -> frozenset[str]:
+    if not cell.has_style:
+        return frozenset()
+    marks = set()
+    if cell.font is not None and cell.font.b:
+        marks.add("bold")
+    if cell.fill is not None and cell.fill.fill_type not in (None, "none"):
+        marks.add("fill")
+    if cell.border is not None and cell.border.bottom is not None and cell.border.bottom.style:
+        marks.add("border_bottom")
+    return frozenset(marks)
+
+
 def load(path: str | Path) -> RawWorkbook:
     path = Path(path)
     sha = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -116,6 +130,7 @@ def load(path: str | Path) -> RawWorkbook:
                     cached=ws_v.cell(cell.row, cell.column).value if formula is not None else value,
                     number_format=cell.number_format,
                     flags=flags,
+                    style=_style(cell),
                 )
 
         for t in ws.tables.values():

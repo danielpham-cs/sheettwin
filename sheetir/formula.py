@@ -26,6 +26,32 @@ class Resolver(Protocol):
 
 
 @dataclass
+class Arg:
+    """One argument of a function call, including everything nested inside it."""
+
+    text: str = ""
+    tokens: int = 0
+    refs: list[tuple[Ref, str]] = field(default_factory=list)
+    calls: list[Call] = field(default_factory=list)  # calls directly inside this argument
+
+
+@dataclass
+class Call:
+    function: str
+    args: list[Arg] = field(default_factory=lambda: [Arg()])
+
+
+def _emit(stack: list[Call | None], text: str, refs=()) -> None:
+    """Add a token to the current argument of every enclosing call."""
+    for call in stack:
+        if call is not None:
+            arg = call.args[-1]
+            arg.text += text
+            arg.tokens += 1
+            arg.refs.extend(refs)
+
+
+@dataclass
 class ParsedFormula:
     # Template items: ["t", text] for literal text, ["r", RelRef json] for a relative reference.
     template: list[list]
@@ -34,6 +60,7 @@ class ParsedFormula:
     literals: list[tuple[float, str | None]] = field(default_factory=list)  # (value, enclosing function)
     functions: list[str] = field(default_factory=list)
     issues: list[tuple[str, str]] = field(default_factory=list)
+    calls: list[Call] = field(default_factory=list)  # every call, innermost first
 
 
 def render(template: list[list], host: str, row: int, col: int, mode: str = "a1") -> str:
@@ -62,21 +89,34 @@ def parse_formula(text: str, sheet: str, row: int, col: int, resolver: Resolver)
         return ParsedFormula([["t", text.lstrip("=")]], text, issues=[("parse_error", str(exc))])
 
     pf = ParsedFormula(template=[], key="")
-    stack: list[str | None] = []  # enclosing function (None for a plain parenthesis)
+    stack: list[Call | None] = []  # enclosing calls (None for a plain parenthesis)
+    in_array = 0
     for tok in tokens:
         if tok.type == Token.WSPACE:
             continue
         value = tok.value
 
         if tok.type in (Token.FUNC, Token.PAREN) and tok.subtype == Token.CLOSE:
-            if stack:
-                stack.pop()
-        elif tok.type == Token.PAREN and tok.subtype == Token.OPEN:
+            call = stack.pop() if stack else None
+            if call is not None:
+                pf.calls.append(call)
+                parent = next((c for c in reversed(stack) if c is not None), None)
+                if parent is not None:
+                    parent.args[-1].calls.append(call)
+            _emit(stack, value)
+            pf.template.append(["t", value])
+            continue
+
+        if tok.type == Token.PAREN and tok.subtype == Token.OPEN:
+            _emit(stack, value)
             stack.append(None)
+            pf.template.append(["t", value])
+            continue
 
         if tok.type == Token.FUNC and tok.subtype == Token.OPEN:
             fname = _function_name(value)
-            stack.append(fname)
+            _emit(stack, value)
+            stack.append(Call(fname))
             pf.functions.append(fname)
             if fname in VOLATILE:
                 pf.issues.append(("volatile", fname))
@@ -85,18 +125,30 @@ def parse_formula(text: str, sheet: str, row: int, col: int, resolver: Resolver)
             pf.template.append(["t", value.upper()])
             continue
 
+        if tok.type == Token.ARRAY:
+            in_array += 1 if tok.subtype == Token.OPEN else -1
+        elif tok.type == Token.SEP and tok.subtype == Token.ARG and not in_array and stack and stack[-1] is not None:
+            _emit(stack[:-1], value)
+            stack[-1].args.append(Arg())
+            pf.template.append(["t", value])
+            continue
+
         if tok.type == Token.OPERAND and tok.subtype == Token.NUMBER:
             try:
-                pf.literals.append((float(value), stack[-1] if stack else None))
+                pf.literals.append((float(value), stack[-1].function if stack and stack[-1] else None))
             except ValueError:
                 pass
+            _emit(stack, value)
             pf.template.append(["t", value])
             continue
 
         if tok.type == Token.OPERAND and tok.subtype == Token.RANGE:
+            n = len(pf.refs)
             pf.template.append(_operand(value, sheet, row, col, resolver, pf))
+            _emit(stack, value, pf.refs[n:])
             continue
 
+        _emit(stack, value)
         pf.template.append(["t", value])
 
     pf.key = render(pf.template, sheet, row, col, mode="r1c1")

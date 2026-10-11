@@ -11,6 +11,8 @@ Planted:
 
 from __future__ import annotations
 
+import re
+import zipfile
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -110,4 +112,17 @@ def make_quotation(path: str | Path) -> Path:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
+    _freeze(path)
     return path
+
+
+def _freeze(path: Path) -> None:
+    """Pin the save timestamps openpyxl writes (zip entries, docProps), so the same sample always has
+    the same bytes, and therefore the same workbook id in the web UI."""
+    with zipfile.ZipFile(path) as z:
+        entries = [(i.filename, z.read(i.filename)) for i in z.infolist()]
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in entries:
+            if name == "docProps/core.xml":
+                data = re.sub(rb"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", b"2026-01-01T00:00:00Z", data)
+            z.writestr(zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0)), data, zipfile.ZIP_DEFLATED)
