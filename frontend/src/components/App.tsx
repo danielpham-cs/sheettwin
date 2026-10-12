@@ -6,7 +6,9 @@ import { ExportsPanel } from "@/components/ExportsPanel";
 import { FailureView, ParseReport } from "@/components/ParseStatus";
 import { GraphView } from "@/components/GraphView";
 import { ChartsView } from "@/components/ChartsView";
+import { IssuesView } from "@/components/IssuesView";
 import { QueryView } from "@/components/QueryView";
+import { ResolveDialog, type ResolveTarget } from "@/components/ResolveDialog";
 import { StructureView } from "@/components/StructureView";
 import { Sidebar, type View } from "@/components/Sidebar";
 import { UploadDialog } from "@/components/UploadDialog";
@@ -47,8 +49,9 @@ function Shell() {
   const [graphFocus, setGraphFocus] = useState<string | null>(null);
   const [sheetFocus, setSheetFocus] = useState<string | null>(null);
   const [backendDown, setBackendDown] = useState(false);
-  const [notice, setNotice] = useState<{ text: string; report?: boolean } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; report?: boolean; download?: string } | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [resolving, setResolving] = useState<ResolveTarget | null>(null);
 
   const refresh = useCallback(
     (select?: string): Promise<Workbook[]> =>
@@ -67,13 +70,15 @@ function Shell() {
     [],
   );
 
-  // After an upload, say whether it was a file seen before or a new version of a known one.
-  async function uploaded(res: IngestResult) {
+  // After an upload, say whether it was a file seen before or a new version of a known one. `made`: how this version
+  // was made from the previous one by an edit in SheetTwin (given its version number); it also offers the download.
+  async function uploaded(res: IngestResult, made?: (version: number) => string) {
     const list = await refresh(res.id);
     const w = list.find((x) => x.id === res.id);
     const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(t.locale, { dateStyle: "medium", timeStyle: "short" }) : "?");
     const parts: string[] = [];
-    if (res.duplicate) parts.push(t.upload.duplicate(res.name, when(res.first_uploaded)));
+    if (made) parts.push(made(w?.version ?? 1));
+    else if (res.duplicate) parts.push(t.upload.duplicate(res.name, when(res.first_uploaded)));
     else if (w && w.versions > 1) parts.push(t.upload.newVersion(w.name, w.version));
     if (res.failed) parts.push(t.upload.parseFailed(res.name));
     else if (res.status === "verified") parts.push(t.upload.parsedVerified(res.name, res.counts?.cells ?? 0));
@@ -81,7 +86,7 @@ function Shell() {
       const s = await api.summary(res.id).catch(() => null);
       parts.push(t.upload.parsedPartial(res.name, s?.verification?.coverage?.n_not_understood ?? 0));
     } else if (res.status === "check_failed") parts.push(t.upload.parsedCheckFailed(res.name));
-    setNotice(parts.length ? { text: parts.join(" "), report: !res.failed } : null);
+    setNotice(parts.length ? { text: parts.join(" "), report: !res.failed, download: made ? api.exportUrl(res.id, res.name) : undefined } : null);
   }
 
   async function remove(id: string) {
@@ -176,6 +181,11 @@ function Shell() {
         {notice && (
           <div className="mx-6 mt-4 flex items-start gap-3 rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-2.5 text-sm text-cyan-50">
             <span className="flex-1">{notice.text}</span>
+            {notice.download && (
+              <a href={notice.download} download className="shrink-0 rounded-md bg-cyan-300/15 px-2 py-0.5 text-xs text-white ring-1 ring-cyan-200/30 hover:bg-cyan-300/25">
+                {t.fixes.download}
+              </a>
+            )}
             {notice.report && (
               <button onClick={() => setReportOpen(true)} className="shrink-0 rounded-md bg-cyan-300/15 px-2 py-0.5 text-xs text-white ring-1 ring-cyan-200/30 hover:bg-cyan-300/25">
                 {t.upload.seeReport}
@@ -210,6 +220,16 @@ function Shell() {
             onTraceGraph={(cell) => { setGraphFocus(cell); setView("graph"); }}
             onAsk={(cell) => { setView("chat"); send(cell); }}
             onReparsed={() => { setReloads((n) => n + 1); refresh(); }}
+            onResolve={setResolving}
+          />
+        ) : view === "issues" ? (
+          <IssuesView
+            key={activeId ?? "none"}
+            workbookId={activeId}
+            reloads={reloads}
+            onResolve={setResolving}
+            onOpenCell={(cell) => { setSheetFocus(cell); setView("sheets"); }}
+            onChanged={async () => { setReloads((n) => n + 1); await refresh(); }}
           />
         ) : view === "query" ? (
           <QueryView
@@ -248,6 +268,14 @@ function Shell() {
         onClose={() => setReportOpen(false)}
         onReparse={async () => { if (activeId) { await api.rebuild(activeId); setReloads((n) => n + 1); await refresh(); } }}
         onOpenCell={(cell) => { setReportOpen(false); setSheetFocus(cell); setView("sheets"); }}
+        onFixed={async (res) => { setReportOpen(false); await uploaded(res, (v) => t.fixes.applied(res.applied.length, res.name, v)); }}
+      />
+      <ResolveDialog
+        workbookId={activeId}
+        target={resolving}
+        onClose={() => setResolving(null)}
+        onEdited={async (res) => { setResolving(null); await uploaded(res, (v) => t.resolve.applied(res.edited.length, res.name, v)); }}
+        onIgnored={async () => { setResolving(null); setReloads((n) => n + 1); await refresh(); }}
       />
     </div>
   );

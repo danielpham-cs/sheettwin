@@ -30,12 +30,13 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .. import __version__
+from .. import __version__, fixes
 from ..build import build_ir
 from ..convert import SUFFIXES
 from ..loader import WorkbookError
 from ..sample import make_quotation
 from ..store import IR_SCHEMA, TRACE_SQL
+from ..verify import NOT_UNDERSTOOD
 from . import graph, provenance
 from .charts import charts
 from .chat import answer, find_cells
@@ -117,6 +118,8 @@ def _ingest(data: bytes, filename: str, file_modified: str | None = None) -> dic
     if not src.exists():
         src.write_bytes(data)
     db = folder / "ir.db"
+    if not seen:
+        provenance.inherit_ignored(folder)
     reparse = not seen or provenance.db_meta(db).get("ir_schema") != str(IR_SCHEMA)
     base = {"id": wid, "name": rec["name"], "duplicate": seen, "first_uploaded": rec["first_uploaded"], "reparsed": reparse}
     if reparse:
@@ -129,7 +132,7 @@ def _ingest(data: bytes, filename: str, file_modified: str | None = None) -> dic
 def _parse(folder: Path, src: Path) -> dict | None:
     """Build (and verify) the IR for a stored workbook. On failure, record why in error.json and return it."""
     try:
-        build_ir(src, folder / "ir.db", user_tables=provenance.user_tables(folder))
+        build_ir(src, folder / "ir.db", user_tables=provenance.user_tables(folder), ignored=provenance.ignored(folder))
     except WorkbookError as exc:
         return provenance.record_failure(folder, exc.kind, exc.detail, __version__)
     except Exception as exc:  # noqa: BLE001 - a SheetIR bug: keep the upload, say so, retry after an upgrade
@@ -284,6 +287,106 @@ def rebuild(wid: str):
         return {"id": wid, "failed": True, "error": failed, "counts": None, "status": "failed"}
     db = folder / "ir.db"
     return {"id": wid, "failed": False, "counts": _db_counts(db), "status": provenance.db_meta(db).get("parse_status")}
+
+
+@app.get("/api/workbooks/{wid}/fixes")
+def fix_suggestions(wid: str):
+    """For each formula SheetIR cannot follow fully: what it does today and, where possible, a replacement."""
+    folder = _folder(wid)
+    return fixes.suggest(_db_path(wid), provenance.source_file(folder))
+
+
+class ApplyFixes(BaseModel):
+    cells: list[str]
+
+
+@app.post("/api/workbooks/{wid}/fixes/apply")
+def apply_fixes(wid: str, req: ApplyFixes):
+    """Write the suggested formulas of `cells` into a copy of the workbook and ingest it as its next version.
+    The formulas are recomputed here, never taken from the request."""
+    folder = _folder(wid)
+    src = provenance.source_file(folder)
+    if src is None:
+        raise HTTPException(404, "the original workbook is no longer stored")
+    s = fixes.suggest(_db_path(wid), src)
+    if not s["can_apply"]:
+        raise HTTPException(400, "only .xlsx / .xlsm files can be edited")
+    usable = {f["cell"]: f["fix"] for f in s["fixes"] if f["fix"] and not f.get("blocked")}
+    edits = {c: usable[c] for c in req.cells if c in usable}
+    if not edits:
+        raise HTTPException(400, "none of these cells has a fix that can be applied")
+    data = fixes.apply(src, edits)
+    return {**_ingest(data, provenance.read(folder)["name"]), "applied": sorted(edits)}
+
+
+@app.get("/api/workbooks/{wid}/resolve")
+def resolve_issues(wid: str):
+    """Every issue with a recommended fix (cells to change and their new contents), and the ignored issues."""
+    return fixes.recommend(_db_path(wid), provenance.source_file(_folder(wid)))
+
+
+MAX_EDITS = 2000
+
+
+class Edits(BaseModel):
+    edits: dict[str, str]  # cell id -> contents as typed in Excel ("=..." formula, "" to clear)
+
+
+@app.post("/api/workbooks/{wid}/edits")
+def edit_cells(wid: str, req: Edits):
+    """Write the user's contents into a copy of the workbook and ingest it as its next version."""
+    folder = _folder(wid)
+    src = provenance.source_file(folder)
+    if src is None:
+        raise HTTPException(404, "the original workbook is no longer stored")
+    if src.suffix.lower() not in fixes.EDITABLE:
+        raise HTTPException(400, "only .xlsx / .xlsm files can be edited")
+    if not req.edits or len(req.edits) > MAX_EDITS:
+        raise HTTPException(400, f"send between 1 and {MAX_EDITS} edits")
+    try:
+        data = fixes.apply(src, req.edits)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {**_ingest(data, provenance.read(folder)["name"]), "edited": sorted(req.edits)}
+
+
+class IssueKey(BaseModel):
+    cell: str
+    kind: str
+    detail: str
+    note: str | None = None
+
+
+@app.post("/api/workbooks/{wid}/ignored")
+def ignore_issue(wid: str, req: IssueKey):
+    """Mark an issue as intended: it is no longer reported, in this version and the ones after it."""
+    folder = _folder(wid)
+    con = _connect(wid)
+    try:
+        found = con.execute("SELECT 1 FROM issues WHERE cell_id = ? AND kind = ? AND detail = ?",
+                            (req.cell, req.kind, req.detail)).fetchone()
+    finally:
+        con.close()
+    if not found:
+        raise HTTPException(404, "no such issue")
+    if req.kind in NOT_UNDERSTOOD:
+        raise HTTPException(400, "formulas SheetIR cannot follow cannot be ignored: fix them, or keep the partial status")
+    items = [i for i in provenance.ignored(folder) if (i["cell"], i["kind"], i["detail"]) != (req.cell, req.kind, req.detail)]
+    provenance.save_ignored(folder, [*items, {"cell": req.cell, "kind": req.kind, "detail": req.detail,
+                                              "note": (req.note or "").strip() or None, "at": provenance.now()}])
+    return rebuild(wid)
+
+
+@app.post("/api/workbooks/{wid}/ignored/remove")
+def unignore_issue(wid: str, req: IssueKey):
+    """Report an ignored issue again."""
+    folder = _folder(wid)
+    items = provenance.ignored(folder)
+    kept = [i for i in items if (i["cell"], i["kind"], i["detail"]) != (req.cell, req.kind, req.detail)]
+    if len(kept) == len(items):
+        raise HTTPException(404, "this issue is not ignored")
+    provenance.save_ignored(folder, kept)
+    return rebuild(wid)
 
 
 class TableSpec(BaseModel):

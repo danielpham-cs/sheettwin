@@ -28,6 +28,34 @@ export type IngestResult = {
   failed: boolean; status: ParseStatus; error?: ParseError; counts: Record<string, number> | null;
 };
 
+/** A suggested edit for a formula SheetIR cannot follow fully (sheetir/fixes.py). `fix` is the replacement formula,
+ * when there is one; `advice` lists the issue kinds left for the user to handle; `blocked` says why a fix cannot be
+ * written into the file. */
+export type FixSuggestion = {
+  cell: string;
+  formula: string | null;
+  issues: { kind: string; detail: string }[];
+  fix: string | null;
+  changes: { kind: string; function?: string; target?: string; old?: string; new?: string }[];
+  inputs: { cell: string; value: unknown }[];
+  advice: string[];
+  blocked?: "shared_formula" | "array_formula" | "not_found";
+};
+export type FixSuggestions = { can_apply: boolean; fixes: FixSuggestion[] };
+
+/** One issue, with the fix SheetIR recommends (sheetir/fixes.py `recommend`): the cells it would change and their new
+ * contents, as typed in Excel. `current` holds those cells' contents now (and the issue's own cell). */
+export type IssueEntry = {
+  cell: string; group_id: number | null; kind: string; severity: "high" | "medium" | "low"; detail: string;
+  recommendation: { type: string; params: Record<string, unknown>; edits: Record<string, string> } | null;
+  current: Record<string, string>;
+  ignorable: boolean;
+  blocked?: Record<string, "shared_formula" | "array_formula" | "not_found">;
+};
+export type IgnoredIssue = { cell: string; kind: string; severity: string; detail: string; note: string | null; at: string | null };
+export type ResolveData = { can_apply: boolean; issues: IssueEntry[]; ignored: IgnoredIssue[] };
+export type IssueKey = { cell: string; kind: string; detail: string };
+
 export type DiffResult = {
   counts: { added: number; removed: number; changed: number };
   identical: boolean;
@@ -240,6 +268,15 @@ export const api = {
   sheet: (id: string, name: string) => call<SheetData>(`/api/workbooks/${id}/sheet?name=${encodeURIComponent(name)}`),
   cell: (id: string, cell: string) => call<CellDetail>(`/api/workbooks/${id}/cell?id=${encodeURIComponent(cell)}`),
   sql: (id: string, query: string) => call<SqlResult>(`/api/workbooks/${id}/sql`, json({ query })),
+  fixes: (id: string) => call<FixSuggestions>(`/api/workbooks/${id}/fixes`),
+  applyFixes: (id: string, cells: string[]) =>
+    call<IngestResult & { applied: string[] }>(`/api/workbooks/${id}/fixes/apply`, json({ cells })),
+  resolve: (id: string) => call<ResolveData>(`/api/workbooks/${id}/resolve`),
+  editCells: (id: string, edits: Record<string, string>) =>
+    call<IngestResult & { edited: string[] }>(`/api/workbooks/${id}/edits`, json({ edits })),
+  ignoreIssue: (id: string, key: IssueKey, note?: string) =>
+    call<{ status: ParseStatus }>(`/api/workbooks/${id}/ignored`, json({ ...key, note })),
+  unignoreIssue: (id: string, key: IssueKey) => call<{ status: ParseStatus }>(`/api/workbooks/${id}/ignored/remove`, json(key)),
   sqlCheck: (id: string, query: string) => call<{ error: string | null }>(`/api/workbooks/${id}/sql/check`, json({ query })),
   setUserTables: (id: string, sheet: string, tables: TableSpec[]) =>
     call<{ status: ParseStatus }>(`/api/workbooks/${id}/user-tables/${encodeURIComponent(sheet)}`,

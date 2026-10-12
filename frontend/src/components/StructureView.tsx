@@ -7,6 +7,7 @@ import {
 } from "@/lib/api";
 import { apiErrorText, specToInfo, TableEditor, toSpec, type Box } from "@/components/TableEditor";
 import { useI18n } from "@/lib/i18n";
+import type { ResolveTarget } from "@/components/ResolveDialog";
 
 const MAX_ROWS = 400;
 const MAX_COLS = 52;
@@ -46,9 +47,10 @@ type Props = {
   onTraceGraph: (cell: string) => void;
   onAsk: (cell: string) => void;
   onReparsed: () => void;
+  onResolve: (target: ResolveTarget) => void;
 };
 
-export function StructureView({ workbookId, summary, focusCell, onTraceGraph, onAsk, onReparsed }: Props) {
+export function StructureView({ workbookId, summary, focusCell, onTraceGraph, onAsk, onReparsed, onResolve }: Props) {
   const { t } = useI18n();
   const [picked, setSheet] = useState<string | null>(focusCell ? sheetOf(focusCell) : null);
   const [data, setData] = useState<{ key: string; sheet: SheetData } | null>(null);
@@ -281,7 +283,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
           <TableInspector table={focused} sheet={sheet!} onCell={selectCell} />
         ) : detail && sd ? (
           <CellInspector detail={detail} sheet={sd} onCell={(id) => (sheetOf(id) === sheet ? selectCell(id) : (setSheet(sheetOf(id)), selectCell(id)))}
-            onTraceGraph={onTraceGraph} onAsk={onAsk} />
+            onTraceGraph={onTraceGraph} onAsk={onAsk} onResolve={onResolve} />
         ) : (
           <p className="text-zinc-500">{t.sheets.inspectorHint}</p>
         )}
@@ -402,8 +404,9 @@ function whereText(t: ReturnType<typeof useI18n>["t"], c: SheetCell, sd: SheetDa
   return w.body(tb.name, key ? `“${fmt(shown(key))}”` : String(c.row), f?.name ?? colName(c.col), f?.kind === "derived");
 }
 
-function CellInspector({ detail, sheet, onCell, onTraceGraph, onAsk }: {
+function CellInspector({ detail, sheet, onCell, onTraceGraph, onAsk, onResolve }: {
   detail: CellDetail; sheet: SheetData; onCell: (id: string) => void; onTraceGraph: (c: string) => void; onAsk: (c: string) => void;
+  onResolve: (target: ResolveTarget) => void;
 }) {
   const { t } = useI18n();
   const s = t.sheets;
@@ -465,7 +468,13 @@ function CellInspector({ detail, sheet, onCell, onTraceGraph, onAsk }: {
           <div className="space-y-2">
             {detail.issues.map((i, n) => (
               <div key={n} className="rounded-r-lg border-l-2 bg-white/[0.03] px-3 py-2" style={{ borderColor: i.severity === "high" ? SEV_RING.high : i.severity === "medium" ? SEV_RING.medium : "#898781" }}>
-                <div className="text-[13px] font-medium text-zinc-100">{i.kind.replace(/_/g, " ")}</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-medium text-zinc-100">{i.kind.replace(/_/g, " ")}</span>
+                  <button onClick={() => onResolve({ cell: c.cell_id, kind: i.kind, detail: i.detail })}
+                    className="ml-auto rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-zinc-200 ring-1 ring-white/10 hover:bg-white/10">
+                    {t.issues.resolve}
+                  </button>
+                </div>
                 <div className="mt-0.5 text-xs text-zinc-400">{t.issueHelp[i.kind] ?? ""}</div>
                 <div className="mt-1 break-all font-mono text-[11.5px] text-zinc-500">{i.detail}</div>
               </div>

@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  ChartPie, ChevronRight, Database, FilePlus2, FileSpreadsheet, FolderOutput, Grid3x3, Languages, MessageSquareText, Network, Search,
-  Sparkles, Trash2,
+  ChartPie, ChevronRight, Database, FilePlus2, FileSpreadsheet, FolderOutput, Grid3x3, Languages, ListChecks, MessageSquareText, Network,
+  Search, Sparkles, Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
@@ -11,7 +11,7 @@ import type { Workbook } from "@/lib/api";
 import { StatusBadge } from "@/components/ParseStatus";
 import { useI18n } from "@/lib/i18n";
 
-export type View = "chat" | "sheets" | "query" | "graph" | "charts";
+export type View = "chat" | "sheets" | "issues" | "query" | "graph" | "charts";
 
 type Props = {
   workbooks: Workbook[];
@@ -88,6 +88,9 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
         </RailButton>
         <RailButton label={t.nav.sheets} onClick={() => onView("sheets")} active={view === "sheets" && !panel}>
           <Grid3x3 className="size-5" />
+        </RailButton>
+        <RailButton label={t.nav.issues} onClick={() => onView("issues")} active={view === "issues" && !panel}>
+          <ListChecks className="size-5" />
         </RailButton>
         <RailButton label={t.nav.query} onClick={() => onView("query")} active={view === "query" && !panel}>
           <Database className="size-5" />

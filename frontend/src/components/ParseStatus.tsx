@@ -1,9 +1,9 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, CircleDashed, CircleHelp, FileX2, Loader2, RefreshCw, ShieldCheck, Trash2, UploadCloud, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDashed, CircleHelp, FileX2, Loader2, RefreshCw, ShieldCheck, Trash2, UploadCloud, Wand2, X, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
-import type { ParseError, ParseStatus, Summary, Workbook } from "@/lib/api";
+import { api, type FixSuggestion, type FixSuggestions, type IngestResult, type ParseError, type ParseStatus, type Summary, type Workbook } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
 const STYLE: Record<ParseStatus, { icon: typeof CheckCircle2; tone: string }> = {
@@ -27,7 +27,7 @@ export function StatusBadge({ status, compact, onClick }: { status: ParseStatus;
     : <span title={t.status.hint[status]} className={cls}>{body}</span>;
 }
 
-function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+export function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -61,8 +61,9 @@ function Line({ ok, children }: { ok: boolean | "warn" | undefined; children: Re
 }
 
 /** What the independent check found, how much of the workbook SheetIR understands, and what it leaves out. */
-export function ParseReport({ open, summary, onClose, onReparse, onOpenCell }: {
+export function ParseReport({ open, summary, onClose, onReparse, onOpenCell, onFixed }: {
   open: boolean; summary: Summary | null; onClose: () => void; onReparse: () => Promise<void>; onOpenCell: (cell: string) => void;
+  onFixed: (result: IngestResult & { applied: string[] }) => Promise<void>;
 }) {
   const { t } = useI18n();
   const r = t.report;
@@ -128,7 +129,8 @@ export function ParseReport({ open, summary, onClose, onReparse, onOpenCell }: {
             <ul className="space-y-1.5 text-zinc-200">
               <Line ok={v.coverage.understood === v.coverage.formulas || "warn"}>{r.understood(v.coverage.understood, v.coverage.formulas)}</Line>
             </ul>
-            {v.coverage.not_understood.length > 0 && (
+            {v.coverage.not_understood.length > 0 && summary && (
+              <FixList key={summary.id} workbookId={summary.id} onOpenCell={onOpenCell} onFixed={onFixed} fallback={
               <div className="mt-3">
                 <div className="mb-1.5 text-xs text-zinc-400">{r.notUnderstood}</div>
                 <ul className="space-y-1.5">
@@ -140,7 +142,7 @@ export function ParseReport({ open, summary, onClose, onReparse, onOpenCell }: {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </div>} />
             )}
             <div className="mt-3">
               <div className="mb-1.5 text-xs text-zinc-400">{r.ignored}</div>
@@ -166,6 +168,105 @@ export function ParseReport({ open, summary, onClose, onReparse, onOpenCell }: {
         </button>
       </footer>
     </Modal>
+  );
+}
+
+const show = (v: unknown) => (typeof v === "string" ? `"${v}"` : String(v));
+
+/** For each formula SheetIR cannot follow: what it does now and the suggested replacement, with a button that writes
+ * the chosen ones into a copy of the workbook, parsed and verified as its next version. `fallback` is shown if the
+ * suggestions cannot be loaded. */
+function FixList({ workbookId, onOpenCell, onFixed, fallback }: {
+  workbookId: string; onOpenCell: (cell: string) => void; onFixed: (result: IngestResult & { applied: string[] }) => Promise<void>;
+  fallback: React.ReactNode;
+}) {
+  const { t } = useI18n();
+  const f = t.fixes;
+  const [data, setData] = useState<FixSuggestions | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const usable = (x: FixSuggestion) => !!x.fix && !x.blocked && !!data?.can_apply;
+
+  useEffect(() => {
+    let live = true;
+    api.fixes(workbookId).then((d) => {
+      if (!live) return;
+      setData(d);
+      setChosen(new Set(d.fixes.filter((x) => x.fix && !x.blocked && d.can_apply).map((x) => x.cell)));
+    }, () => live && setFailed(true));
+    return () => { live = false; };
+  }, [workbookId]);
+
+  if (failed) return <>{fallback}</>;
+  if (!data) return <p className="mt-3 flex items-center gap-2 text-xs text-zinc-500"><Loader2 className="size-3.5 animate-spin" />{f.loading}</p>;
+
+  const toggle = (cell: string) => setChosen((s) => { const n = new Set(s); if (n.has(cell)) n.delete(cell); else n.add(cell); return n; });
+  async function applyChosen() {
+    setBusy(true);
+    setError(null);
+    try {
+      await onFixed(await api.applyFixes(workbookId, [...chosen]));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <div className="mb-1.5 flex items-center gap-1.5 text-xs text-zinc-400"><Wand2 className="size-3.5 text-violet-300" />{f.title}</div>
+      <ul className="space-y-2">
+        {data.fixes.map((x) => {
+          const dynamic = x.changes.some((c) => c.kind === "dynamic_ref");
+          const inputs = x.inputs.map((i) => `${i.cell} = ${show(i.value)}`).join(", ");
+          return (
+            <li key={x.cell} className="rounded-xl bg-amber-400/[0.06] px-3 py-2.5 ring-1 ring-amber-300/15">
+              <div className="flex items-start gap-2.5">
+                {x.fix && (
+                  <input type="checkbox" className="mt-0.5 size-3.5 shrink-0 accent-violet-400" disabled={!usable(x) || busy}
+                    checked={chosen.has(x.cell)} onChange={() => toggle(x.cell)} aria-label={x.cell} />
+                )}
+                <div className="min-w-0 flex-1 text-xs">
+                  <div>
+                    <button onClick={() => onOpenCell(x.cell)} className="font-mono text-violet-300 hover:underline">{x.cell}</button>
+                    <span className="ml-2 text-amber-200">{[...new Set(x.issues.map((i) => i.kind.replace(/_/g, " ")))].join(" · ")}</span>
+                  </div>
+                  {x.changes.map((c, i) => (
+                    <p key={i} className="mt-1 text-zinc-300">
+                      {c.kind === "dynamic_ref" ? <>{f.pointsTo(c.function ?? "", c.target ?? "")}{inputs && f.because(inputs)}</>
+                        : c.kind === "unresolved_name" ? f.nameTypo(c.old ?? "", c.new ?? "")
+                        : f.sheetTypo(c.old ?? "", c.new ?? "")}
+                    </p>
+                  ))}
+                  {x.formula && (
+                    <div className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 font-mono">
+                      <span className="text-zinc-500">{f.now}</span><span className="break-all text-zinc-400">{x.formula}</span>
+                      {x.fix && <><span className="text-zinc-500">{f.fixed}</span><span className="break-all text-emerald-300">{x.fix}</span></>}
+                    </div>
+                  )}
+                  {x.fix && dynamic && x.inputs.length > 0 && (
+                    <p className="mt-1.5 text-zinc-500">{f.frozen(x.inputs.map((i) => i.cell).join(", "))}</p>
+                  )}
+                  {x.blocked && <p className="mt-1.5 text-amber-200/80">{f.blocked[x.blocked]}</p>}
+                  {x.advice.map((k) => <p key={k} className="mt-1.5 text-zinc-400">{f.advice[k] ?? t.issueHelp[k] ?? k}</p>)}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {!data.can_apply && data.fixes.some((x) => x.fix) && <p className="mt-2 text-xs text-zinc-500">{f.cannotApply}</p>}
+      {error && <p className="mt-2 rounded-lg bg-rose-500/10 px-3 py-1.5 text-xs text-rose-200">{error}</p>}
+      {data.fixes.some(usable) && (
+        <button disabled={busy || chosen.size === 0} onClick={applyChosen}
+          className="mt-3 flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-400 px-3 py-1.5 text-xs font-medium text-white shadow-lg shadow-violet-500/20 disabled:opacity-50">
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}{busy ? f.applying : f.apply(chosen.size)}
+        </button>
+      )}
+    </div>
   );
 }
 

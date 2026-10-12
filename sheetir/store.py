@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 
 # Bumped when the tables below change; the web UI offers to re-parse databases built with an older one.
-IR_SCHEMA = 3  # 3: meta carries parse_status, verification and load_warnings
+IR_SCHEMA = 4  # 3: meta carries parse_status, verification and load_warnings; 4: ignored_issues
 
 SCHEMA = """
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
@@ -36,6 +36,8 @@ CREATE TABLE relations(
     from_table INT, from_field TEXT, to_table INT, key_field TEXT, return_field TEXT);
 CREATE TABLE names(name TEXT, scope TEXT, refers_to TEXT);
 CREATE TABLE issues(issue_id INTEGER PRIMARY KEY, cell_id TEXT, group_id INT, kind TEXT, severity TEXT, detail TEXT);
+-- Issues the user marked as intended: kept out of `issues`, so nothing reports them, but still queryable.
+CREATE TABLE ignored_issues(cell_id TEXT, group_id INT, kind TEXT, severity TEXT, detail TEXT, note TEXT, ignored_at TEXT);
 CREATE TABLE checks(name TEXT, passed INT, severity TEXT, detail TEXT);
 
 CREATE INDEX ix_edges_dst ON edges(dst_cell);
