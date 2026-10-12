@@ -1,18 +1,26 @@
 "use client";
 
 import {
-  AlertTriangle, ArrowUp, Bot, ChartPie, Crosshair, Database, FolderOutput, Grid3x3, ListTree, Lock, MessageSquareText, Network, Settings2,
-  Table2, User,
+  AlertTriangle, ArrowUp, Bot, ChartPie, CircleCheck, Crosshair, Database, FolderOutput, Grid3x3, ListTree, Lock, MessageSquareText, Network,
+  Settings2, Sparkles, Table2, User,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Summary } from "@/lib/api";
+import type { ChatReply, Summary } from "@/lib/api";
 import { StatusBadge } from "@/components/ParseStatus";
 import { useI18n } from "@/lib/i18n";
 
-export type Message = { id: string; role: "user" | "assistant"; content: string; error?: boolean; cells?: string[] };
+export type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  error?: boolean;
+  cells?: string[];
+  /** Where an assistant reply came from and how it was checked (absent in chats saved before this existed). */
+  meta?: Omit<ChatReply, "reply" | "cells">;
+};
 
 const CELL_RE = /^(?:'[^']+'|[A-Za-z_][\w.]*)![A-Z]{1,3}\d+$/;
 
@@ -57,6 +65,43 @@ function Markdown({ text, onCell }: { text: string; onCell: (id: string) => void
       >
         {text}
       </ReactMarkdown>
+    </div>
+  );
+}
+
+/** Who answered and what was checked: the model and its number check (with the query it ran), or a fallback notice. */
+function ReplyMeta({ meta }: { meta: NonNullable<Message["meta"]> }) {
+  const { t } = useI18n();
+  if (meta.fallback) {
+    return (
+      <p title={meta.fallback} className="mb-3 flex items-center gap-1.5 text-xs text-amber-300/90">
+        <AlertTriangle className="size-3.5 shrink-0" />{t.chat.fallback}
+      </p>
+    );
+  }
+  if (meta.source !== "llm") return null;
+  return (
+    <div className="mt-4 space-y-2 border-t border-white/5 pt-3 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex items-center gap-1.5 rounded-lg bg-violet-500/10 px-2 py-0.5 text-violet-200">
+          <Sparkles className="size-3.5" />{t.chat.ai(meta.model ?? "")}
+        </span>
+        {meta.grounded ? (
+          <span className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
+            <CircleCheck className="size-3.5" />{t.chat.grounded}
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2 py-0.5 text-amber-300">
+            <AlertTriangle className="size-3.5" />{t.chat.ungrounded((meta.ungrounded ?? []).join(", "))}
+          </span>
+        )}
+      </div>
+      {meta.sql && (
+        <details className="group">
+          <summary className="cursor-pointer select-none text-zinc-500 transition hover:text-zinc-300">{t.chat.showSql}</summary>
+          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-black/40 p-3 font-mono text-[11.5px] text-zinc-300">{meta.sql}</pre>
+        </details>
+      )}
     </div>
   );
 }
@@ -253,7 +298,9 @@ export function Chat({ summary, messages, pending, onSend, onNewData, onShowGrap
                           m.error ? "border-rose-400/20 bg-rose-500/10 text-rose-100" : "border-white/[0.06] bg-white/[0.035]"
                         }`}
                       >
+                        {m.meta?.fallback && <ReplyMeta meta={m.meta} />}
                         <Markdown text={m.content} onCell={(id) => submit(id)} />
+                        {m.meta?.source === "llm" && <ReplyMeta meta={m.meta} />}
                         {!!m.cells?.length && (
                           <div className="mt-4 flex flex-wrap gap-2 border-t border-white/5 pt-3">
                             {m.cells.map((c) => (
@@ -276,8 +323,9 @@ export function Chat({ summary, messages, pending, onSend, onNewData, onShowGrap
                     <span className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-violet-500 to-cyan-400 text-white">
                       <Bot className="size-4" />
                     </span>
-                    <div className="rounded-2xl rounded-tl-md border border-white/[0.06] bg-white/[0.035] px-4 py-2">
+                    <div className="flex items-center gap-3 rounded-2xl rounded-tl-md border border-white/[0.06] bg-white/[0.035] px-4 py-2">
                       <Typing />
+                      <span className="text-xs text-zinc-500">{t.chat.thinking}</span>
                     </div>
                   </motion.div>
                 )}

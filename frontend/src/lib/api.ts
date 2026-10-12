@@ -136,7 +136,18 @@ export type SqlResult = { columns: string[]; rows: unknown[][]; truncated: boole
 
 export type ExportFile = { name: string; label: string; format: string; size: number; source: boolean };
 
-export type ChatReply = { reply: string; cells: string[] };
+/** `source` says who answered: the language model (grounded in the IR) or the built-in rules. */
+export type ChatReply = {
+  reply: string;
+  cells: string[];
+  source?: "llm" | "rules";
+  model?: string;
+  sql?: string | null;
+  grounded?: boolean;
+  ungrounded?: string[];
+  /** Set when the model failed and the rules answered instead: why. */
+  fallback?: string;
+};
 
 export type NodeKind = "param" | "input" | "formula" | "output";
 
@@ -236,7 +247,7 @@ export const api = {
   graph: (id: string, cell?: string) =>
     call<GraphData>(`/api/workbooks/${id}/graph${cell ? `?cell=${encodeURIComponent(cell)}` : ""}`),
   charts: (id: string) => call<ChartData>(`/api/workbooks/${id}/charts`),
-  exports: (id: string) => call<ExportFile[]>(`/api/workbooks/${id}/exports`),
+  exports: (id: string, lang?: string) => call<ExportFile[]>(`/api/workbooks/${id}/exports${lang ? `?lang=${lang}` : ""}`),
   sheet: (id: string, name: string) => call<SheetData>(`/api/workbooks/${id}/sheet?name=${encodeURIComponent(name)}`),
   cell: (id: string, cell: string) => call<CellDetail>(`/api/workbooks/${id}/cell?id=${encodeURIComponent(cell)}`),
   sql: (id: string, query: string) => call<SqlResult>(`/api/workbooks/${id}/sql`, json({ query })),
@@ -246,7 +257,14 @@ export const api = {
   resetUserTables: (id: string, sheet: string) =>
     call<{ status: ParseStatus }>(`/api/workbooks/${id}/user-tables/${encodeURIComponent(sheet)}`, { method: "DELETE" }),
   rebuild: (id: string) => call<{ id: string; failed: boolean; status: ParseStatus; error?: ParseError }>(`/api/workbooks/${id}/rebuild`, { method: "POST" }),
-  exportUrl: (id: string, name: string) => `/api/workbooks/${id}/exports/${encodeURIComponent(name)}`,
+  /** `lang` picks the language of a report; `inline` opens it in the browser instead of downloading it. */
+  exportUrl: (id: string, name: string, opts: { lang?: string; inline?: boolean } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.lang) q.set("lang", opts.lang);
+    if (opts.inline) q.set("inline", "true");
+    const query = q.toString();
+    return `/api/workbooks/${id}/exports/${encodeURIComponent(name)}${query ? `?${query}` : ""}`;
+  },
 };
 
 export function formatSize(bytes: number) {

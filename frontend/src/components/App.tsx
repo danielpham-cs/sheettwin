@@ -127,7 +127,8 @@ function Shell() {
     try {
       // Short floor so the typing indicator reads as a reply, not a flicker.
       const [res] = await Promise.all([api.chat(wid, text, lang), new Promise((r) => setTimeout(r, 450))]);
-      push({ id: uid(), role: "assistant", content: res.reply, cells: res.cells });
+      const { reply, cells, ...meta } = res;
+      push({ id: uid(), role: "assistant", content: reply, cells, meta });
     } catch (e) {
       push({ id: uid(), role: "assistant", content: t.app.error((e as Error).message), error: true });
     } finally {
