@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import re
+import tempfile
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +13,7 @@ from pathlib import Path
 from openpyxl.formula.translate import Translator
 
 from . import __version__, store
+from .convert import as_xlsx
 from .formula import STRUCTURAL_ARGS, ParsedFormula, parse_formula
 from .groups import group_formulas
 from .loader import CellKey, RawWorkbook, load
@@ -157,8 +160,20 @@ def build_ir(xlsx: str | Path, db_path: str | Path, table_scorer: str = "hand", 
     """Parse `xlsx` into a SheetIR database. `table_scorer` picks how header rows are recognized:
     "hand" (hand-set weights) or "model" (classifiers trained on StatSheets). With `verify`, the database is then
     checked against the workbook re-read independently (sheetir.verify), and the report stored in its meta table.
-    `user_tables` (sheet -> table specs) replaces table detection on those sheets with the user's tables."""
-    raw = load(xlsx)
+    `user_tables` (sheet -> table specs) replaces table detection on those sheets with the user's tables.
+    `xlsx` may also be a .csv, .xls or .ods file: it is converted to an .xlsx first (sheetir.convert), and both the
+    parse and the check read that conversion."""
+    with tempfile.TemporaryDirectory() as tmp:
+        book, notes = as_xlsx(Path(xlsx), Path(tmp))
+        return _build(Path(xlsx), book, notes, db_path, table_scorer, verify, user_tables)
+
+
+def _build(src: Path, book: Path, notes: list[str], db_path: str | Path, table_scorer: str, verify: bool,
+           user_tables: dict[str, list[dict]] | None) -> BuildResult:
+    raw = load(book)
+    if book != src:
+        raw.path, raw.sha256 = src, hashlib.sha256(src.read_bytes()).hexdigest()
+    raw.warnings = notes + raw.warnings
     cells = raw.cells
     resolver = WorkbookResolver(raw)
 
@@ -412,7 +427,7 @@ def build_ir(xlsx: str | Path, db_path: str | Path, table_scorer: str = "hand", 
     if verify:
         from . import verify as independent
         try:
-            report = independent.verify(xlsx, db_path)
+            report = independent.verify(book, db_path)
         except Exception as exc:  # noqa: BLE001 - a failed check must not lose the parse result
             report = {"status": "unverified", "error": f"{type(exc).__name__}: {exc}", "checks": {}, "coverage": None}
         independent.record(db_path, report)

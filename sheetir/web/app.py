@@ -32,6 +32,7 @@ from pydantic import BaseModel
 
 from .. import __version__
 from ..build import build_ir
+from ..convert import SUFFIXES
 from ..loader import WorkbookError
 from ..sample import make_quotation
 from ..store import IR_SCHEMA, TRACE_SQL
@@ -104,9 +105,9 @@ def _ingest(data: bytes, filename: str, file_modified: str | None = None) -> dic
     """Store and parse an uploaded workbook. The same bytes always land in the same result (data/<sha256[:12]>);
     uploading them again reuses it, re-parsing only when it was built with an older IR schema."""
     name = Path(filename or "workbook.xlsx").name
-    if not name.lower().endswith((".xlsx", ".xlsm")):
+    if not name.lower().endswith(SUFFIXES):
         raise HTTPException(400, {"kind": "unsupported_type", "ext": Path(name).suffix.lower(),
-                                  "message": "only .xlsx / .xlsm files are supported"})
+                                  "message": "only .xlsx / .xlsm / .xls / .ods / .csv / .tsv files are supported"})
     sha = hashlib.sha256(data).hexdigest()
     wid = sha[:12]
     folder = data_dir() / wid
@@ -505,8 +506,8 @@ def _export_bytes(wid: str, name: str) -> bytes:
 @app.get("/api/workbooks/{wid}/exports")
 def list_exports(wid: str):
     db = _db_path(wid)
-    out = [{"name": src.name, "label": "原始活頁簿", "format": "XLSX", "size": src.stat().st_size, "source": True}
-           for src in db.parent.iterdir() if src.suffix.lower() in (".xlsx", ".xlsm")]
+    out = [{"name": src.name, "label": "原始活頁簿", "format": src.suffix[1:].upper(), "size": src.stat().st_size,
+            "source": True} for src in db.parent.iterdir() if src.suffix.lower() in SUFFIXES]
     for name, (label, fmt, _) in EXPORTS.items():
         size = db.stat().st_size if name == "ir.db" else len(_export_bytes(wid, name))
         out.append({"name": name, "label": label, "format": fmt, "size": size, "source": False})
@@ -523,7 +524,7 @@ def download_export(wid: str, name: str):
         return Response(_export_bytes(wid, name), media_type=EXPORTS[name][2],
                         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(f'{stem}.{wid}.{name}')}"})
     src = db.parent / Path(name).name
-    if src.suffix.lower() in (".xlsx", ".xlsm") and src.is_file():
+    if src.suffix.lower() in SUFFIXES and src.is_file():
         return FileResponse(src, filename=src.name)
     raise HTTPException(404, "no such export")
 
