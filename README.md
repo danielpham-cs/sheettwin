@@ -5,11 +5,15 @@ spreadsheets into verified, explainable digital twins. SheetIR parses an Excel w
 queryable **intermediate representation (IR)** stored in a single SQLite file. Every later stage (Python
 transpilation, verification, explanations, Q&A) is built on this IR.
 
-All analysis is **deterministic Python**. No LLM is involved yet, and no data leaves the machine.
+Parsing, auditing and the audit report are **deterministic Python**. A language model is optional and used only by
+the chat, through any OpenAI-compatible endpoint (a local server such as Ollama, vLLM or llama.cpp, or a cloud API).
+SheetIR, not the model, decides what an answer may rest on: questions about the data are answered from read-only SQL
+queries that SheetIR runs, and every number in an answer is checked against them. With no model configured, or with a
+local one, no data leaves the machine.
 
-> **Status: proof of concept (v0.1).** SheetIR parses, structures and audits a workbook. It does **not yet
-> compute** anything: there is no Python translation, no L1/L2 verification, and no LLM naming or Q&A.
-> See [Status and roadmap](#status-and-roadmap).
+> **Status: proof of concept (v0.1).** SheetIR parses, structures and audits a workbook, writes an audit report, and
+> answers questions about it with a grounded language model. It does **not yet compute** anything: there is no Python
+> translation, no L1/L2 verification, and no what-if scenarios. See [Status and roadmap](#status-and-roadmap).
 
 ---
 
@@ -18,6 +22,8 @@ All analysis is **deterministic Python**. No LLM is involved yet, and no data le
 - [What it does](#what-it-does)
 - [Quick start](#quick-start)
 - [Web UI](#web-ui)
+- [Chat with a language model](#chat-with-a-language-model)
+- [Audit report](#audit-report)
 - [Command line](#command-line)
 - [Architecture](#architecture)
 - [How the analysis works](#how-the-analysis-works)
@@ -46,6 +52,8 @@ Given an `.xlsx` workbook, SheetIR produces:
 | **Relations** read from lookups and conditional aggregates | `quote.material` → `materials.code`, returning `price_factor` (exact `VLOOKUP`, 20 cells) |
 | **Issues** found during parsing | Inconsistent formula in a column, constant typed over a formula, hard-coded `1.15`, unused values, `TODAY()`, `INDIRECT` |
 | **Self-check** results | Formula coverage, independent re-derivation of groups, cycle detection |
+| An **audit report** (HTML, printable to PDF, or Markdown) | 9 findings by severity, each explained, with the parse verification |
+| **Answers** to questions, grounded in the IR (optional language model) | *Which products use material CU?* → the 9 products, from a SQL query, numbers checked |
 
 The original workbook is never modified.
 
@@ -65,8 +73,14 @@ npm install
 npm run build                # writes sheetir/web/static/app (git-ignored)
 cd ..
 
+# optional: answer chat questions with a language model (see "Chat with a language model")
+cp .env.example .env         # then edit it: endpoint, key, model
+
 uv run sheetir serve         # http://127.0.0.1:8765
 ```
+
+Run `sheetir serve` from the repository root: `.env` and the default `data/` folder are found relative to the
+current directory.
 
 | URL | Page |
 |---|---|
@@ -148,16 +162,17 @@ npm run build                        # include the new screenshots
 | Part | Contents |
 |---|---|
 | **新增資料** button | Upload dialog: drag and drop an `.xlsx`/`.xlsm`, or load the sample workbook |
-| **轉換檔案** button | Files derived from the workbook (original, `ir.db`, `model.json`, CSVs), with preview and download |
+| **轉換檔案** button | Files derived from the workbook (original, `ir.db`, `model.json`, CSVs, and the [audit report](#audit-report) as HTML and Markdown), with preview and download. The HTML report opens in a new tab, where it can be printed or saved as PDF; reports are written in the UI language |
 | **工作表結構** button | Sheet structure: a spreadsheet-like grid of each sheet. *Structure* tints every detected table (header rows, body, total row, key column) and outlines it, and marks parameters and outputs outside tables; *Roles* colors cells as input, computed, output or unused. Issue cells are outlined, *Show formulas* shows formulas instead of values, and the tables on the sheet are listed above the grid. Clicking a table shows its header, body, key and fields; clicking a cell shows where it sits (*table quote → row "Cover plate" → field margin*), its formula and R1C1 pattern, its calculation group, its issues (explained), its sources and users, with links to the dependency graph and the chat. A banner offers **Re-parse** when the result was built with an older IR schema |
 | **SQL 查詢** button | SQL against the workbook's SheetIR database, with example queries and the tables and columns of the schema (click to insert). Only `SELECT`/`WITH` is accepted and the database is opened read-only; up to 500 rows, downloadable as CSV. Cell ids in the result open the cell in the sheet structure view |
 | **依賴圖** button | Dependency graph. *Overview*: one node per formula group, table data column or standalone input, so a filled-down column is a single node. *Cell trace*: a cell's precedents (3 levels up) and dependents (2 levels down). Hovering a node highlights its whole calculation chain; nodes with issues get a badge |
 | **圖表** button | Charts. Structure and audit: cell roles and issue severity (donuts), issue kinds, cells and formulas per sheet. Table data: pick a detected table and a numeric column, shown per row (bars) or summed by a text column (donut or bars), with a data-table view. Formula columns only have values if the file was last saved by Excel |
 | Workbook list | One row per file name. Results of the same file name with different content are its versions (`v2/3`); the arrow lists them with upload date and result id, and each can be removed. Each result keeps its own chat history (stored in the browser) |
 | **轉換檔案** → *Source file* | Where the result came from: file name (and other names the same bytes were uploaded under), version, SHA-256, size, the file's modified time on your machine, first and last upload, and the SheetIR version, IR schema and header scorer that parsed it. *Compare with another version* lists the cells added, removed or changed (value or formula), or says the cell contents are identical |
-| Chat | Answers about the summary, issues, parameters, tables, outputs, checks, or a cell such as `Quote!J13`. Cell ids in a reply are clickable, and replies about a cell link to its dependency graph |
+| Chat | Questions about the workbook in plain language: what it does, its tables, formulas and parameters, its data (*which products use CU?*, *total steel use?*) and its issues. With a [language model](#chat-with-a-language-model) configured, a reply shows the model, whether every number in it was checked against the data, and the SQL query it ran. A message that is only a cell id such as `Quote!J13` gets a card with its formula, group, issues and calculation chain. Cell ids in a reply are clickable, and replies about a cell link to its dependency graph |
 
-The chat is rule-based for now (`sheetir/web/chat.py`). The LLM Q&A stage will replace `answer()` there.
+Without a language model, or when the model fails, the chat answers with built-in rules (`sheetir/web/chat.py`):
+the summary, issues, parameters, tables, outputs, checks, or a cell. A reply from the rules after a model failure says so.
 
 The UI is bilingual: the **中 / EN** button at the bottom of the left rail switches between Traditional Chinese
 and English, including chat replies (`lang` in the chat request). UI strings live in
@@ -200,11 +215,93 @@ its database (never the original file).
 | `GET` | `/api/workbooks/{id}/issues` | All issues |
 | `GET` | `/api/workbooks/{id}/model` | Tables, fields, parameters, outputs, groups, relations |
 | `POST` | `/api/workbooks/{id}/sql` | `{"query": "..."}` → columns and rows (max 500) |
-| `POST` | `/api/workbooks/{id}/chat` | `{"message": "...", "lang": "zh" \| "en"}` → `{"reply": markdown, "cells": [...]}` |
+| `POST` | `/api/workbooks/{id}/chat` | `{"message": "...", "lang": "zh" \| "en"}` → `{"reply": markdown, "cells": [...], "source": "llm" \| "rules"}`. From the model also `model`, `route` (`structure`, `data` or `issues`), `sql`, `grounded` and `ungrounded` (numbers that could not be checked); after a model failure, `fallback` with the reason. `lang` is the UI language, used when the question's own language cannot be told |
+| `GET` | `/api/llm` | `{"enabled": bool, "model": name}`: whether the chat uses a language model |
 | `GET` | `/api/workbooks/{id}/graph?cell=&up=&down=` | Block-level dependency graph; with `cell`, that cell's neighbourhood |
 | `GET` | `/api/workbooks/{id}/charts` | Role/issue/sheet statistics and the rows of every table (constants, or cached values for formulas) |
-| `GET` | `/api/workbooks/{id}/exports` | Converted files: name, label, format, size |
-| `GET` | `/api/workbooks/{id}/exports/{name}` | Download one file (`ir.db`, `model.json`, `cells.csv`, `issues.csv`, `formula_groups.csv`, or the original workbook) |
+| `GET` | `/api/workbooks/{id}/exports?lang=` | Converted files: name, label, format, size |
+| `GET` | `/api/workbooks/{id}/exports/{name}?lang=&inline=` | Download one file (`ir.db`, `model.json`, `cells.csv`, `issues.csv`, `formula_groups.csv`, `audit_report.html`, `audit_report.md`, or the original workbook). Reports are written in `lang` (`zh` by default, or `en`); `inline=true` opens a report in the browser instead of downloading it |
+
+---
+
+## Chat with a language model
+
+The chat can answer with a language model (`sheetir/understand.py`) through any endpoint that speaks the OpenAI Chat
+Completions protocol with JSON-schema output. All calls go through `sheetir/llm.py`, so the model and runtime are
+configuration. Copy `.env.example` to `.env` (git-ignored) and set:
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `OPENAI_API_KEY` | Turns the model on. Local servers ignore its value, but it must not be empty | (unset: rules only) |
+| `OPENAI_BASE_URL` | Endpoint, e.g. Ollama at `http://<host>:11434/v1`, vLLM or llama.cpp at `http://<host>:8000/v1` | `https://api.openai.com/v1` |
+| `SHEETIR_LLM_MODEL` | Model name as the endpoint knows it, e.g. `qwen3:30b-a3b` on Ollama | `gpt-5.4-mini` |
+
+Environment variables take precedence over `.env`. `GET /api/llm` shows whether the model is on.
+
+**Ollama.** To serve another machine on the LAN, start Ollama with `OLLAMA_HOST=0.0.0.0`. Also raise its context
+length (`OLLAMA_CONTEXT_LENGTH=32768`): its default is short, and a longer prompt is cut without an error, which shows
+up only as poor answers. Each model call times out after 120 s, so the first question after the model is loaded may be
+slow.
+
+**What the model sees.** A compact sketch of the parsed workbook (`sheetir/sketch.py`: sheets, tables with their
+fields and a few sample rows, parameters, results, lookups, issues), the database schema, the question, and the rows
+of the queries SheetIR runs for it. Never the file itself. With a cloud endpoint this content leaves the machine;
+use a local server for confidential workbooks.
+
+**How an answer is made.** SheetIR enforces each step; the prompt alone is not trusted to:
+
+1. The model classifies the question: **structure** (what the workbook does, its tables, formulas, parameters),
+   **data** (anything about table rows: which, how many, totals, the most or least) or **issues**.
+2. **Data** questions must come with one SQL query; SheetIR runs it read-only (at most 60 rows) and asks the model
+   once more if it wrote none, or if the query failed or found nothing. A data question is never answered from the
+   sketch's sample rows; without a query the reply says it could not look it up. **Issues** questions get SheetIR's
+   full issue list with counts by severity and kind. **Structure** questions are answered from the sketch.
+3. The model writes the answer from that material, in the language of the question (decided by SheetIR, not the model).
+4. SheetIR checks the answer:
+   - **Language**: a reply in the wrong language is rewritten once.
+   - **Numbers**: every number must appear in the material the answer was written from, to the precision shown
+     (15% may stand for 0.15). Otherwise the answer is rewritten once; if numbers are still unchecked, a data answer
+     is replaced by the query result as a table, and any other answer carries a note listing them.
+   - **Cells**: cell ids are looked up in the database; only cells that exist become links in the reply.
+   - If the workbook holds no results calculated by Excel and the query found none, the reply says so.
+
+A message that is only cell ids gets the rule-based cell card, and any model failure falls back to the rules.
+
+**Evaluation.** `bench/eval_qa.py` asks the configured model 14 questions about the sample workbook (table rows,
+counts, totals, values, issues, structure; English and Chinese) and scores each reply against expected answers read
+from the IR by SQL: every expected item named, no excluded item named, and the reply in the language of the question.
+
+```bash
+uv run python bench/eval_qa.py --repeat 2 -o qa.json
+```
+
+| `qwen3:30b-a3b` on Ollama, 14 questions × 2 runs | Passed | Median time per question |
+|---|---|---|
+| Model decides whether to query and which language to use | 23/28 | ≈7 s |
+| SheetIR enforces the query, the language and the number check | 28/28 | ≈12 s |
+
+The failures before were replies in English to Chinese questions (4) and a wrong item in a list (1). These figures
+come from the synthetic sample only, not from real-world workbooks.
+
+---
+
+## Audit report
+
+`sheetir/report.py` writes an audit report from the IR with fixed queries; no language model is involved, so the same
+database always gives the same report. It contains:
+
+1. **Summary**: issues by severity, what to fix first, parse status, workbook size (sheets, cells, formulas, groups,
+   tables, parameters), and a note when the file holds no values calculated by Excel.
+2. **Findings**, by severity and then by kind: a plain-language explanation of the kind, and for each finding its cell,
+   semantic location, formula and technical detail.
+3. **Parse verification and coverage**: the independent re-read checks, formulas that cannot be traced fully, parts of
+   the file SheetIR does not model, and the self-checks.
+4. **About this report**: how it was produced and what rule-based checks cannot prove.
+
+It comes as a self-contained HTML page (no external resources, with print styles, so the browser can save it as PDF)
+and as Markdown with the same content, in Traditional Chinese or English. In the web UI it is under **轉換檔案**; over
+HTTP it is `/api/workbooks/{id}/exports/audit_report.html` or `.md` with `?lang=zh|en`. The technical detail column is
+the raw output of SheetIR's rules (English, R1C1 notation).
 
 ---
 
@@ -235,8 +332,13 @@ flowchart LR
     end
     CK --> DB[("ir.db<br/>SQLite")]
     DB --> CLI["CLI<br/>trace · sql"]
-    DB --> API["FastAPI<br/>web/app.py"] --> UI["Browser UI<br/>web/static/index.html"]
-    DB -. "next stages" .-> NX["Transpiler · Verifier ·<br/>LLM naming · Q&A"]
+    DB --> RP["Audit report<br/>report.py"]
+    DB --> QA["Grounded Q&A<br/>understand.py · sketch.py"]
+    QA <--> GW["LLM gateway<br/>llm.py"] <--> M["OpenAI-compatible endpoint<br/>(Ollama, vLLM, llama.cpp, cloud)"]
+    RP --> API["FastAPI<br/>web/app.py"]
+    QA --> API
+    DB --> API --> UI["Browser UI<br/>frontend/ (Next.js)"]
+    DB -. "next stages" .-> NX["Transpiler · Verifier ·<br/>LLM naming · scenarios"]
 ```
 
 The IR has four layers. Each layer is derived from the one below it:
@@ -479,9 +581,12 @@ FROM fields f JOIN tables t USING(table_id) WHERE t.name = 'quote' ORDER BY f.co
 ```
 SheetTwin/
 ├── pyproject.toml
+├── .env.example       language model settings for the chat; copy to .env (git-ignored)
 ├── bench/
 │   ├── eval_statsheets.py     table detection scored against the StatSheets benchmark
-│   └── train_table_model.py   train the header classifiers, with cross-validation
+│   ├── train_table_model.py   train the header classifiers, with cross-validation
+│   ├── verify_parse.py        independent parse check on a set of workbooks, with a tamper control
+│   └── eval_qa.py             grounded Q&A scored on the sample with the configured model
 ├── sheetir/
 │   ├── refs.py        A1 parsing, R1C1 relativization, cell ids
 │   ├── loader.py      L0: read formulas, cached values, tables, names, validation
@@ -492,12 +597,18 @@ SheetTwin/
 │   ├── models/        trained header classifiers (JSON), used with --tables model
 │   ├── relations.py   L2: relations from lookups and conditional aggregates
 │   ├── build.py       pipeline, name resolver, issues, self-checks
+│   ├── verify.py      independent re-read of the workbook, compared with the IR (imports nothing else from SheetIR)
 │   ├── store.py       SQLite schema, writer, trace query
+│   ├── report.py      audit report as HTML or Markdown (deterministic)
+│   ├── llm.py         language model gateway: OpenAI-compatible endpoint, JSON-schema answers, .env settings
+│   ├── sketch.py      compact text sketch of a parsed workbook for the model
+│   ├── understand.py  grounded Q&A (routing, enforced query, number and language checks); table suggestions
 │   ├── sample.py      synthetic quotation workbook with planted errors
 │   ├── cli.py         sample | build | trace | sql | serve
 │   └── web/
 │       ├── app.py             FastAPI backend
-│       ├── chat.py            rule-based chat answers (LLM hook later)
+│       ├── chat.py            rule-based chat answers (no model, or model failed; cell cards)
+│       ├── provenance.py      which upload produced which result: versions, aliases, diffs
 │       ├── graph.py           dependency graphs for drawing (overview, cell trace)
 │       ├── charts.py          statistics and table rows for the charts view
 │       └── static/
@@ -510,7 +621,12 @@ SheetTwin/
     ├── test_tables.py  table layouts: year/styled headers, multi-row headers, stub columns, sections, titles
     ├── test_relations.py  lookups, INDEX/MATCH, XLOOKUP, SUMIFS, match modes, table links
     ├── test_tablemodel.py  tree-model evaluator, scorer selection
-    └── test_web.py  web API (summary, sheet, layout, download, re-parse, delete), chat answers, dependency graphs, chart data
+    ├── test_verify.py  independent parse check and its tamper control
+    ├── test_robustness.py  unreadable files and failed uploads
+    ├── test_understand.py  grounded Q&A with a scripted model: routing, enforced query, number and language checks
+    ├── test_report.py  audit report: content, formats, languages, HTML escaping, downloads
+    ├── test_web.py  web API (summary, sheet, layout, download, re-parse, delete), chat with and without a model, dependency graphs, chart data
+    └── conftest.py  turns the language model off in every test
 ```
 
 ---
@@ -521,7 +637,7 @@ SheetTwin/
 uv run pytest
 ```
 
-94 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL), provenance (duplicate uploads, aliases, versions, diffs, download names), the independent parse check and its tamper control, unreadable files (old .xls, password, not a workbook, damaged package, broken formatting) and failed uploads, user table corrections (applied on re-parse, validated, reset), chat answers, dependency graphs and chart data. The chat UI itself is not covered by automated tests yet.
+111 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL), provenance (duplicate uploads, aliases, versions, diffs, download names), the independent parse check and its tamper control, unreadable files (old .xls, password, not a workbook, damaged package, broken formatting) and failed uploads, user table corrections (applied on re-parse, validated, reset), chat answers, dependency graphs and chart data, the grounded Q&A with a scripted model (routing, the enforced query, the issue list, the number check, the reply language), chat with and without a model and its fallback, and the audit report (content, both formats and languages, HTML escaping, downloads). The tests never call a real language model: `tests/conftest.py` turns it off even when `.env` configures one, and `bench/eval_qa.py` is the check against a real model. The chat UI itself is not covered by automated tests yet.
 
 ---
 
@@ -624,18 +740,19 @@ pipeline on all 737 sheets with 5-fold cross-validation. That is not directly co
 
 | SheetTwin artifact | Status |
 |---|---|
-| A5 Audit report | **Partial.** Issues are detected and listed; no downloadable report yet |
+| A5 Audit report | **Partial.** Rule-based findings in a downloadable report (HTML printable to PDF, Markdown; Chinese and English). No Excel or Word format, and no written summary of the business impact |
 | A3 Interactive twin web app | **Partial.** Structure browser only; no what-if sliders or recalculation |
 | A1 Verified Python model | Not started: transpiler and L1/L2 verification |
-| A2 Plain-language specification | Not started: needs the LLM stage |
-| A4 Grounded Q&A analyst | Not started |
+| A2 Plain-language specification | Not started |
+| A4 Grounded Q&A analyst | **Partial.** Questions answered from the IR with enforced read-only SQL and checked numbers; no scenario tools (`run_scenario`, sensitivity, goal seek), which need the twin engine |
 
 Next steps, in order:
 
 1. **Transpile** each formula group to Python (vectorized per group) and run **L1 parity** against Excel's cached values. This needs a workbook saved by Excel.
 2. **L2 differential testing** against an independent engine (`pycel`), with input domains taken from data validation and observed values.
-3. **LLM naming** (Cartographer): propose names for groups, fields and parameters from the packaged context, constrained by a JSON schema.
-4. **Storage**: content-addressed version history, a catalog across workbooks, encryption at rest.
+3. **LLM naming** (Cartographer): propose names for groups, fields and parameters from the packaged context, constrained by a JSON schema. Table suggestions (`understand.suggest_tables`) are written but not yet offered in the UI.
+4. **Scenario tools** for the Q&A analyst, on the verified twin.
+5. **Storage**: content-addressed version history, a catalog across workbooks, encryption at rest.
 
 ### Known limitations
 
@@ -646,3 +763,7 @@ Next steps, in order:
 - Defined names that hold constants or formulas, rather than ranges, are not resolved.
 - The grid view shows at most 400 rows × 52 columns per sheet.
 - Heuristics have been tested only on the synthetic sample and small fixtures, not on real-world workbooks yet.
+- The grounded Q&A has been evaluated only on the sample workbook, with one model (`qwen3:30b-a3b`). Answers to data
+  questions can be terse (sometimes just the number), and an answer takes several model calls (about 10–30 s). The
+  model sees only a few sample rows per table in the sketch and at most 60 rows per query. Questions about formula
+  results cannot be answered from a file that was not last saved by Excel, since it holds no calculated values.
