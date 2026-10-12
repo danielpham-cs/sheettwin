@@ -1,0 +1,19 @@
+# Build context: only what the image needs (see Dockerfile).
+.git
+.env
+.venv
+**/__pycache__
+.pytest_cache
+data
+samples
+out
+bench
+tests
+*.sheetir.db
+package-lock.json
+SheetTwin_*.md
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/tsconfig.tsbuildinfo
+sheetir/web/static/app

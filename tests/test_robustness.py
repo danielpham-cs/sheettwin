@@ -77,19 +77,19 @@ def client(tmp_path, monkeypatch):
 
 
 def test_failed_upload_is_kept_explained_and_removable(client):
-    r = client.post("/api/workbooks", files={"file": ("old.xlsx", OLE2 + b"\0" * 512)}).json()
-    assert r["failed"] and r["error"]["kind"] == "legacy_xls" and r["status"] == "failed"
+    r = client.post("/api/workbooks", files={"file": ("old.xls", OLE2 + b"\0" * 512)}).json()
+    assert r["failed"] and r["error"]["kind"] == "corrupt" and r["status"] == "failed"
     (w,) = client.get("/api/workbooks").json()
-    assert (w["id"], w["name"], w["status"], w["error"]["kind"]) == (r["id"], "old.xlsx", "failed", "legacy_xls")
+    assert (w["id"], w["name"], w["status"], w["error"]["kind"]) == (r["id"], "old.xls", "failed", "corrupt")
     again = client.post(f"/api/workbooks/{r['id']}/rebuild").json()
-    assert again["failed"] and again["error"]["kind"] == "legacy_xls"
+    assert again["failed"] and again["error"]["kind"] == "corrupt"
     assert client.delete(f"/api/workbooks/{r['id']}").json() == {"deleted": r["id"]}
     assert client.get("/api/workbooks").json() == []
 
 
 def test_unsupported_type_names_the_problem(client):
-    r = client.post("/api/workbooks", files={"file": ("book.csv", b"a,b\n1,2\n")})
-    assert r.status_code == 400 and r.json()["detail"]["kind"] == "unsupported_type" and r.json()["detail"]["ext"] == ".csv"
+    r = client.post("/api/workbooks", files={"file": ("book.numbers", b"a,b\n1,2\n")})
+    assert r.status_code == 400 and r.json()["detail"]["kind"] == "unsupported_type" and r.json()["detail"]["ext"] == ".numbers"
 
 
 def test_summary_carries_the_verification(client):

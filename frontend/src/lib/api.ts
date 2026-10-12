@@ -251,6 +251,7 @@ export const api = {
   sheet: (id: string, name: string) => call<SheetData>(`/api/workbooks/${id}/sheet?name=${encodeURIComponent(name)}`),
   cell: (id: string, cell: string) => call<CellDetail>(`/api/workbooks/${id}/cell?id=${encodeURIComponent(cell)}`),
   sql: (id: string, query: string) => call<SqlResult>(`/api/workbooks/${id}/sql`, json({ query })),
+  sqlCheck: (id: string, query: string) => call<{ error: string | null }>(`/api/workbooks/${id}/sql/check`, json({ query })),
   setUserTables: (id: string, sheet: string, tables: TableSpec[]) =>
     call<{ status: ParseStatus }>(`/api/workbooks/${id}/user-tables/${encodeURIComponent(sheet)}`,
       { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tables }) }),

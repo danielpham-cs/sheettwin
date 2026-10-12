@@ -33,6 +33,7 @@ from pydantic import BaseModel
 
 from .. import __version__
 from ..build import build_ir
+from ..convert import SUFFIXES
 from ..llm import get_llm
 from ..loader import WorkbookError
 from ..report import audit_report, to_html, to_markdown
@@ -109,9 +110,9 @@ def _ingest(data: bytes, filename: str, file_modified: str | None = None) -> dic
     """Store and parse an uploaded workbook. The same bytes always land in the same result (data/<sha256[:12]>);
     uploading them again reuses it, re-parsing only when it was built with an older IR schema."""
     name = Path(filename or "workbook.xlsx").name
-    if not name.lower().endswith((".xlsx", ".xlsm")):
+    if not name.lower().endswith(SUFFIXES):
         raise HTTPException(400, {"kind": "unsupported_type", "ext": Path(name).suffix.lower(),
-                                  "message": "only .xlsx / .xlsm files are supported"})
+                                  "message": "only .xlsx / .xlsm / .xls / .ods / .csv / .tsv files are supported"})
     sha = hashlib.sha256(data).hexdigest()
     wid = sha[:12]
     folder = data_dir() / wid
@@ -434,11 +435,30 @@ class SqlRequest(BaseModel):
     query: str
 
 
-@app.post("/api/workbooks/{wid}/sql")
-def run_sql(wid: str, req: SqlRequest):
-    q = req.query.strip().rstrip(";")
+def _select_only(query: str) -> str:
+    q = query.strip().rstrip(";")
     if not re.match(r"^(select|with)\b", q, re.I):
         raise HTTPException(400, "only SELECT / WITH queries are allowed")
+    return q
+
+
+@app.post("/api/workbooks/{wid}/sql/check")
+def check_sql(wid: str, req: SqlRequest):
+    """Compile the query without running it (EXPLAIN), for the editor's as-you-type error marks."""
+    try:
+        q = _select_only(req.query)
+    except HTTPException as exc:
+        return {"error": exc.detail}
+    try:
+        _connect(wid).execute("EXPLAIN " + q).fetchone()
+    except sqlite3.Error as exc:
+        return {"error": str(exc)}
+    return {"error": None}
+
+
+@app.post("/api/workbooks/{wid}/sql")
+def run_sql(wid: str, req: SqlRequest):
+    q = _select_only(req.query)
     con = _connect(wid)  # opened read-only, so writes fail even if they slip through
     try:
         cur = con.execute(q)
@@ -547,8 +567,8 @@ def _export_bytes(wid: str, name: str, lang: str = "zh") -> bytes:
 @app.get("/api/workbooks/{wid}/exports")
 def list_exports(wid: str, lang: str = "zh"):
     db = _db_path(wid)
-    out = [{"name": src.name, "label": "原始活頁簿", "format": "XLSX", "size": src.stat().st_size, "source": True}
-           for src in db.parent.iterdir() if src.suffix.lower() in (".xlsx", ".xlsm")]
+    out = [{"name": src.name, "label": "原始活頁簿", "format": src.suffix[1:].upper(), "size": src.stat().st_size,
+            "source": True} for src in db.parent.iterdir() if src.suffix.lower() in SUFFIXES]
     for name, (label, fmt, _) in EXPORTS.items():
         size = db.stat().st_size if name == "ir.db" else len(_export_bytes(wid, name, lang))
         out.append({"name": name, "label": label, "format": fmt, "size": size, "source": False})
@@ -571,7 +591,7 @@ def download_export(wid: str, name: str, lang: str = "zh", inline: bool = False)
         return Response(_export_bytes(wid, name, lang), media_type=EXPORTS[name][2],
                         headers={"Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}"})
     src = db.parent / Path(name).name
-    if src.suffix.lower() in (".xlsx", ".xlsm") and src.is_file():
+    if src.suffix.lower() in SUFFIXES and src.is_file():
         return FileResponse(src, filename=src.name)
     raise HTTPException(404, "no such export")
 

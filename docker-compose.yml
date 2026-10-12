@@ -1,0 +1,16 @@
+# docker compose up --build     then open http://localhost:8765
+services:
+  sheettwin:
+    build: .
+    image: sheettwin
+    ports:
+      - "8765:8765"
+    volumes:
+      - sheettwin-data:/data # uploads and SheetIR databases survive rebuilds
+    env_file:
+      - path: .env # optional: OPENAI_API_KEY (LLM features), SHEETIR_LLM_MODEL, OPENAI_BASE_URL
+        required: false
+    restart: unless-stopped
+
+volumes:
+  sheettwin-data:

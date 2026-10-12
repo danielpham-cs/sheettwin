@@ -80,6 +80,14 @@ def test_rejects_bad_ids_and_writes(client, wid):
     assert r.status_code == 400
 
 
+def test_sql_check_compiles_without_running(client, wid):
+    check = lambda q: client.post(f"/api/workbooks/{wid}/sql/check", json={"query": q}).json()["error"]
+    assert check("SELECT * FROM cells LIMIT 5") is None
+    assert check("SELECT * FROM cells limt 10") == 'near "10": syntax error'
+    assert check("SELECT semantik FROM cells") == "no such column: semantik"
+    assert check("DELETE FROM cells") == "only SELECT / WITH queries are allowed"
+
+
 # ---- provenance: which file produced which result ------------------------------------------------------
 
 def _workbook(path, price):
