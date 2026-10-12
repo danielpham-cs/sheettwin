@@ -14,6 +14,7 @@ where <id> is the first 12 hex chars of the workbook's SHA-256.
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import hashlib
 import io
 import json
@@ -24,15 +25,17 @@ import tempfile
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .. import __version__
 from ..build import build_ir
+from ..loader import WorkbookError
 from ..sample import make_quotation
 from ..store import IR_SCHEMA, TRACE_SQL
-from . import graph
+from . import graph, provenance
 from .charts import charts
 from .chat import answer, find_cells
 
@@ -49,6 +52,16 @@ def data_dir() -> Path:
     d = Path(os.environ.get("SHEETIR_DATA", "data"))
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _folder(wid: str) -> Path:
+    """The stored upload, parsed or not."""
+    if not _ID_RE.match(wid):
+        raise HTTPException(400, "bad workbook id")
+    p = data_dir() / wid
+    if not p.is_dir():
+        raise HTTPException(404, "workbook not found")
+    return p
 
 
 def _db_path(wid: str) -> Path:
@@ -74,20 +87,54 @@ def _loads(v):
     return None if v is None else json.loads(v)
 
 
-def _ingest(data: bytes, filename: str) -> dict:
+def _db_counts(db: Path) -> dict:
+    con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
+    try:
+        q = lambda sql: con.execute(sql).fetchone()[0]  # noqa: E731
+        return {"sheets": len(json.loads(dict(con.execute("SELECT key, value FROM meta").fetchall()).get("sheets") or "[]")),
+                "cells": q("SELECT COUNT(*) FROM cells"), "formula_cells": q("SELECT COUNT(*) FROM cells WHERE vtype='formula'"),
+                "formula_groups": q("SELECT COUNT(*) FROM formula_groups"), "tables": q("SELECT COUNT(*) FROM tables"),
+                "params": q("SELECT COUNT(*) FROM params"), "edges": q("SELECT COUNT(*) FROM edges"),
+                "relations": q("SELECT COUNT(*) FROM relations"), "issues": q("SELECT COUNT(*) FROM issues")}
+    finally:
+        con.close()
+
+
+def _ingest(data: bytes, filename: str, file_modified: str | None = None) -> dict:
+    """Store and parse an uploaded workbook. The same bytes always land in the same result (data/<sha256[:12]>);
+    uploading them again reuses it, re-parsing only when it was built with an older IR schema."""
     name = Path(filename or "workbook.xlsx").name
     if not name.lower().endswith((".xlsx", ".xlsm")):
-        raise HTTPException(400, "only .xlsx / .xlsm files are supported")
-    wid = hashlib.sha256(data).hexdigest()[:12]
+        raise HTTPException(400, {"kind": "unsupported_type", "ext": Path(name).suffix.lower(),
+                                  "message": "only .xlsx / .xlsm files are supported"})
+    sha = hashlib.sha256(data).hexdigest()
+    wid = sha[:12]
     folder = data_dir() / wid
     folder.mkdir(exist_ok=True)
-    src = folder / name
-    src.write_bytes(data)
+    rec, seen = provenance.record_upload(folder, name, sha, len(data), file_modified)
+    src = folder / rec["name"]
+    if not src.exists():
+        src.write_bytes(data)
+    db = folder / "ir.db"
+    reparse = not seen or provenance.db_meta(db).get("ir_schema") != str(IR_SCHEMA)
+    base = {"id": wid, "name": rec["name"], "duplicate": seen, "first_uploaded": rec["first_uploaded"], "reparsed": reparse}
+    if reparse:
+        failed = _parse(folder, src)
+        if failed:
+            return {**base, "failed": True, "error": failed, "counts": None, "status": "failed"}
+    return {**base, "failed": False, "counts": _db_counts(db), "status": provenance.db_meta(db).get("parse_status", "unverified")}
+
+
+def _parse(folder: Path, src: Path) -> dict | None:
+    """Build (and verify) the IR for a stored workbook. On failure, record why in error.json and return it."""
     try:
-        res = build_ir(src, folder / "ir.db")
-    except Exception as exc:
-        raise HTTPException(422, f"could not parse workbook: {exc}") from exc
-    return {"id": wid, "counts": res.counts}
+        build_ir(src, folder / "ir.db", user_tables=provenance.user_tables(folder))
+    except WorkbookError as exc:
+        return provenance.record_failure(folder, exc.kind, exc.detail, __version__)
+    except Exception as exc:  # noqa: BLE001 - a SheetIR bug: keep the upload, say so, retry after an upgrade
+        return provenance.record_failure(folder, "parse_failed", f"{type(exc).__name__}: {exc}", __version__)
+    provenance.clear_failure(folder)
+    return None
 
 
 @app.get("/legacy", response_class=HTMLResponse)
@@ -97,20 +144,17 @@ def legacy():
 
 @app.get("/api/workbooks")
 def list_workbooks():
-    out = []
-    for db in sorted(data_dir().glob("*/ir.db"), key=lambda p: p.stat().st_mtime, reverse=True):
-        con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
-        meta = dict(con.execute("SELECT key, value FROM meta").fetchall())
-        n_issues = con.execute("SELECT COUNT(*) FROM issues WHERE severity='high'").fetchone()[0]
-        con.close()
-        out.append({"id": db.parent.name, "name": Path(meta["source"]).name,
-                    "built_at": meta.get("built_at"), "high_issues": n_issues})
-    return out
+    """Every result with its source (file name, SHA-256, size, upload times) and its version among results
+    of the same file name, most recently uploaded first."""
+    return provenance.catalog(data_dir())
 
 
 @app.post("/api/workbooks")
-def upload(file: UploadFile):
-    return _ingest(file.file.read(), file.filename)
+def upload(file: UploadFile, last_modified: int | None = Form(None)):
+    """`last_modified`: the file's modification time on the uploader's machine, in ms since the epoch."""
+    modified = (dt.datetime.fromtimestamp(last_modified / 1000).isoformat(timespec="seconds")
+                if last_modified else None)
+    return _ingest(file.file.read(), file.filename, modified)
 
 
 @app.post("/api/workbooks/sample")
@@ -157,10 +201,15 @@ def summary(wid: str):
         "id": wid,
         "name": Path(meta["source"]).name,
         "sha256": meta["sha256"],
+        "source": provenance.read(_db_path(wid).parent),
         "built_at": meta.get("built_at"),
         "sheetir_version": meta.get("sheetir_version"),
         "table_scorer": meta.get("table_scorer", "hand"),
         "stale": meta.get("ir_schema") != str(IR_SCHEMA),
+        "status": meta.get("parse_status", "unverified"),
+        "verification": _loads(meta.get("verification")),
+        "load_warnings": _loads(meta.get("load_warnings")) or [],
+        "user_tables": _loads(meta.get("user_tables")) or {},
         "sheets": sheets,
         "sheet_stats": sheet_stats,
         "counts": counts,
@@ -213,32 +262,104 @@ def download_db(wid: str):
     con = _connect(wid)
     name = Path(dict(con.execute("SELECT key, value FROM meta").fetchall())["source"]).stem
     con.close()
-    return FileResponse(_db_path(wid), media_type="application/vnd.sqlite3", filename=f"{name}.sheetir.db")
+    return FileResponse(_db_path(wid), media_type="application/vnd.sqlite3", filename=f"{name}.{wid}.sheetir.db")
 
 
-def _source_file(wid: str) -> Path:
-    _db_path(wid)
-    files = [p for p in (data_dir() / wid).iterdir() if p.suffix.lower() in (".xlsx", ".xlsm")]
-    if not files:
-        raise HTTPException(404, "the original workbook is no longer stored")
-    return files[0]
+@app.get("/api/workbooks/{wid}/diff")
+def diff(wid: str, against: str):
+    """Cells added, removed or changed from result `against` (e.g. the previous version) to this one."""
+    return provenance.diff(_db_path(wid), _db_path(against))
 
 
 @app.post("/api/workbooks/{wid}/rebuild")
 def rebuild(wid: str):
     """Parse the stored copy again with the current SheetIR (after an upgrade)."""
-    src = _source_file(wid)
-    try:
-        res = build_ir(src, data_dir() / wid / "ir.db")
-    except Exception as exc:
-        raise HTTPException(422, f"could not parse workbook: {exc}") from exc
-    return {"id": wid, "counts": res.counts}
+    folder = _folder(wid)
+    src = provenance.source_file(folder)
+    if src is None:
+        raise HTTPException(404, "the original workbook is no longer stored")
+    failed = _parse(folder, src)
+    if failed:
+        return {"id": wid, "failed": True, "error": failed, "counts": None, "status": "failed"}
+    db = folder / "ir.db"
+    return {"id": wid, "failed": False, "counts": _db_counts(db), "status": provenance.db_meta(db).get("parse_status")}
+
+
+class TableSpec(BaseModel):
+    range: str
+    header_rows: int = 1
+    total: bool = False
+    name: str | None = None
+
+
+class SheetTables(BaseModel):
+    tables: list[TableSpec]
+
+
+def _check_tables(specs: list[TableSpec]) -> list[dict]:
+    """Validate the user's tables on one sheet: well-formed ranges, a body row left, no overlaps."""
+    from openpyxl.utils import range_boundaries
+    boxes = []
+    for i, t in enumerate(specs):
+        try:
+            c1, r1, c2, r2 = range_boundaries(t.range.replace("$", "").upper())
+        except Exception:
+            raise HTTPException(400, {"kind": "bad_range", "index": i, "message": f"not a cell range: {t.range}"})
+        if None in (c1, r1, c2, r2):
+            raise HTTPException(400, {"kind": "bad_range", "index": i, "message": f"not a cell range: {t.range}"})
+        if t.header_rows < 0 or (r2 - r1 + 1) - t.header_rows - (1 if t.total else 0) < 1:
+            raise HTTPException(400, {"kind": "too_small", "index": i, "message": f"{t.range} has no body row left"})
+        for j, (d1, s1, d2, s2) in enumerate(boxes):
+            if c1 <= d2 and d1 <= c2 and r1 <= s2 and s1 <= r2:
+                raise HTTPException(400, {"kind": "overlap", "index": i, "other": j, "message": f"{t.range} overlaps {specs[j].range}"})
+        boxes.append((c1, r1, c2, r2))
+    return [{"range": t.range.replace("$", "").upper(), "header_rows": t.header_rows, "total": t.total,
+             **({"name": t.name} if t.name else {})} for t in specs]
+
+
+@app.get("/api/workbooks/{wid}/user-tables")
+def get_user_tables(wid: str):
+    """The tables the user defined, per sheet (sheets not listed use automatic detection)."""
+    return {"sheets": provenance.user_tables(_folder(wid))}
+
+
+def _reparse_with(wid: str, sheets: dict) -> dict:
+    folder = _folder(wid)
+    before = provenance.user_tables(folder)
+    provenance.save_user_tables(folder, sheets)
+    src = provenance.source_file(folder)
+    failed = _parse(folder, src) if src else {"kind": "parse_failed", "detail": "the original workbook is no longer stored"}
+    if failed:
+        provenance.save_user_tables(folder, before)  # keep the last corrections that parsed
+        if src:
+            _parse(folder, src)
+        raise HTTPException(422, {"kind": failed["kind"], "message": failed["detail"]})
+    db = folder / "ir.db"
+    return {"id": wid, "sheets": sheets, "status": provenance.db_meta(db).get("parse_status"), "counts": _db_counts(db)}
+
+
+@app.put("/api/workbooks/{wid}/user-tables/{sheet}")
+def set_user_tables(wid: str, sheet: str, body: SheetTables):
+    """Replace table detection on one sheet with the given tables (an empty list: no tables there), then re-parse."""
+    sheets = json.loads(provenance.db_meta(_db_path(wid)).get("sheets") or "[]")
+    if sheet not in sheets:
+        raise HTTPException(404, {"kind": "unknown_sheet", "message": f"no sheet named {sheet}"})
+    current = provenance.user_tables(_folder(wid))
+    return _reparse_with(wid, {**current, sheet: _check_tables(body.tables)})
+
+
+@app.delete("/api/workbooks/{wid}/user-tables/{sheet}")
+def reset_user_tables(wid: str, sheet: str):
+    """Go back to automatic table detection on one sheet, then re-parse."""
+    current = provenance.user_tables(_folder(wid))
+    current.pop(sheet, None)
+    return _reparse_with(wid, current)
 
 
 @app.delete("/api/workbooks/{wid}")
 def delete(wid: str):
     """Remove the stored copy and its database (the user's original file is never touched)."""
-    folder = _db_path(wid).parent
+    folder = _folder(wid)
     for p in folder.iterdir():
         p.unlink()
     folder.rmdir()
@@ -397,10 +518,10 @@ def download_export(wid: str, name: str):
     db = _db_path(wid)
     stem = Path(dict(_connect(wid).execute("SELECT key, value FROM meta").fetchall())["source"]).stem
     if name == "ir.db":
-        return FileResponse(db, media_type=EXPORTS[name][2], filename=f"{stem}.sheetir.db")
+        return FileResponse(db, media_type=EXPORTS[name][2], filename=f"{stem}.{wid}.sheetir.db")
     if name in EXPORTS:
         return Response(_export_bytes(wid, name), media_type=EXPORTS[name][2],
-                        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(f'{stem}.{name}')}"})
+                        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(f'{stem}.{wid}.{name}')}"})
     src = db.parent / Path(name).name
     if src.suffix.lower() in (".xlsx", ".xlsm") and src.is_file():
         return FileResponse(src, filename=src.name)

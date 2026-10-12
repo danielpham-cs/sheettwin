@@ -149,9 +149,12 @@ npm run build                        # include the new screenshots
 |---|---|
 | **新增資料** button | Upload dialog: drag and drop an `.xlsx`/`.xlsm`, or load the sample workbook |
 | **轉換檔案** button | Files derived from the workbook (original, `ir.db`, `model.json`, CSVs), with preview and download |
+| **工作表結構** button | Sheet structure: a spreadsheet-like grid of each sheet. *Structure* tints every detected table (header rows, body, total row, key column) and outlines it, and marks parameters and outputs outside tables; *Roles* colors cells as input, computed, output or unused. Issue cells are outlined, *Show formulas* shows formulas instead of values, and the tables on the sheet are listed above the grid. Clicking a table shows its header, body, key and fields; clicking a cell shows where it sits (*table quote → row "Cover plate" → field margin*), its formula and R1C1 pattern, its calculation group, its issues (explained), its sources and users, with links to the dependency graph and the chat. A banner offers **Re-parse** when the result was built with an older IR schema |
+| **SQL 查詢** button | SQL against the workbook's SheetIR database, with example queries and the tables and columns of the schema (click to insert). Only `SELECT`/`WITH` is accepted and the database is opened read-only; up to 500 rows, downloadable as CSV. Cell ids in the result open the cell in the sheet structure view |
 | **依賴圖** button | Dependency graph. *Overview*: one node per formula group, table data column or standalone input, so a filled-down column is a single node. *Cell trace*: a cell's precedents (3 levels up) and dependents (2 levels down). Hovering a node highlights its whole calculation chain; nodes with issues get a badge |
 | **圖表** button | Charts. Structure and audit: cell roles and issue severity (donuts), issue kinds, cells and formulas per sheet. Table data: pick a detected table and a numeric column, shown per row (bars) or summed by a text column (donut or bars), with a data-table view. Formula columns only have values if the file was last saved by Excel |
-| Workbook list | Each workbook keeps its own chat history (stored in the browser) |
+| Workbook list | One row per file name. Results of the same file name with different content are its versions (`v2/3`); the arrow lists them with upload date and result id, and each can be removed. Each result keeps its own chat history (stored in the browser) |
+| **轉換檔案** → *Source file* | Where the result came from: file name (and other names the same bytes were uploaded under), version, SHA-256, size, the file's modified time on your machine, first and last upload, and the SheetIR version, IR schema and header scorer that parsed it. *Compare with another version* lists the cells added, removed or changed (value or formula), or says the cell contents are identical |
 | Chat | Answers about the summary, issues, parameters, tables, outputs, checks, or a cell such as `Quote!J13`. Cell ids in a reply are clickable, and replies about a cell link to its dependency graph |
 
 The chat is rule-based for now (`sheetir/web/chat.py`). The LLM Q&A stage will replace `answer()` there.
@@ -180,8 +183,12 @@ its database (never the original file).
 
 | Method | Path | Returns |
 |---|---|---|
-| `GET` | `/api/workbooks` | Parsed workbooks, newest first |
-| `POST` | `/api/workbooks` | Upload (`multipart/form-data`, field `file`) and parse |
+| `GET` | `/api/workbooks` | Every result with its source record (name, aliases, SHA-256, size, file modified, first/last upload, upload count), how it was parsed, and its version among results of the same file name; most recently uploaded first |
+| `POST` | `/api/workbooks` | Upload (`multipart/form-data`: `file`, optional `last_modified` in ms) and parse. Returns `duplicate: true` when the same bytes were uploaded before (the result is reused, re-parsed only if its IR schema is outdated) |
+| `GET` | `/api/workbooks/{id}/user-tables` | The user's table corrections, per sheet |
+| `PUT` | `/api/workbooks/{id}/user-tables/{sheet}` | `{"tables": [{"range", "header_rows", "total", "name"?}]}`: use these tables on the sheet, re-parse and verify. Refused with `bad_range`, `too_small` or `overlap` |
+| `DELETE` | `/api/workbooks/{id}/user-tables/{sheet}` | Back to automatic detection on the sheet, re-parse |
+| `GET` | `/api/workbooks/{id}/diff?against=` | Cells added, removed or changed from another result (e.g. the previous version) to this one |
 | `POST` | `/api/workbooks/sample` | Generate and parse the sample workbook |
 | `GET` | `/api/workbooks/{id}/summary` | Metadata, counts, per-sheet stats, checks, issue counts, whether the IR schema is outdated |
 | `GET` | `/api/workbooks/{id}/sheet?name=` | Cells, issues, tables (with fields) and parameters of one sheet |
@@ -337,12 +344,29 @@ Names are deterministic slugs. A later stage will let an LLM propose better name
 
 ## Storage format
 
+### Which file produced which result
+
+The web server keeps each result in `data/<id>/`, where `<id>` is the first 12 hex digits of the SHA-256 of the
+uploaded bytes. The same file content therefore always maps to the same result, and uploading it again opens that
+result instead of adding another. Each folder holds:
+
+| File | Contents |
+|---|---|
+| `<name>.xlsx` | Copy of the upload, named as at the first upload (the user's file is never touched) |
+| `ir.db` | The SheetIR database; `meta` records the source SHA-256, SheetIR version, IR schema, header scorer and build time |
+| `source.json` | Provenance: `name`, `aliases` (other names the same bytes were uploaded under), `sha256`, `size`, `file_modified` (the file's modified time on the uploader's machine, sent by the browser), `first_uploaded`, `last_uploaded`, `uploads` |
+
+Results with the same file name (case-insensitive) are versions of one workbook, numbered by first upload. Downloaded
+files carry the result id in their name (`quotation.0e2581ad6369.sheetir.db`), so a database on disk still says which
+upload it came from; its `meta.sha256` gives the full hash of the source file. Results stored before `source.json`
+existed get a record rebuilt from `ir.db` (with the build time as upload time and no file-modified time).
+
 ### Location
 
 | Used from | Location |
 |---|---|
 | CLI | Path given with `-o`, default `<workbook>.sheetir.db` next to the workbook |
-| Web UI | `data/<id>/ir.db`, plus a copy of the uploaded file in `data/<id>/`; `<id>` is the first 12 hex characters of the file's SHA-256 |
+| Web UI | `data/<id>/ir.db`, plus a copy of the uploaded file and `source.json` in `data/<id>/`; `<id>` is the first 12 hex characters of the file's SHA-256 (see above) |
 
 Each build **replaces** the previous database at that path; version history is not kept yet. `data/`, `out/` and `*.sheetir.db` are git-ignored.
 
@@ -497,9 +521,59 @@ SheetTwin/
 uv run pytest
 ```
 
-73 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL), chat answers, dependency graphs and chart data. The chat UI itself is not covered by automated tests yet.
+94 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL), provenance (duplicate uploads, aliases, versions, diffs, download names), the independent parse check and its tamper control, unreadable files (old .xls, password, not a workbook, damaged package, broken formatting) and failed uploads, user table corrections (applied on re-parse, validated, reset), chat answers, dependency graphs and chart data. The chat UI itself is not covered by automated tests yet.
 
 ---
+
+### Parse status
+
+Every build ends with an independent check (`sheetir/verify.py`, which imports nothing else from SheetIR): the
+workbook is re-read with plain openpyxl and compared with the database. The report and a status are stored in `meta`
+(`parse_status`, `verification`) and shown by `sheetir build`, in the web UI's status badge and *Verification report*:
+
+| Status | Meaning |
+|---|---|
+| `verified` | Contents, rebuild, references and formula groups all match, and every formula can be traced |
+| `partial` | All checks match, but some formulas cannot be traced fully (`INDIRECT`/`OFFSET`, links to other workbooks, unresolved names, `#REF!`) |
+| `check_failed` | A check found a difference: the result may be wrong |
+| `unverified` | Not checked: built by an older SheetIR, or the check itself could not run |
+| `failed` | The file could not be parsed (web UI only; the upload is kept with `error.json`) |
+
+The report also lists the parts of the file SheetIR does not model (macros, pivot tables, charts, external links,
+comments, images, slicers), read from the package's part names.
+
+Files that cannot be read raise `WorkbookError` with a `kind`: `legacy_xls` (Excel 97-2003 renamed .xlsx),
+`encrypted` (password protected), `not_a_workbook`, `corrupt`. A workbook whose formatting part is unreadable is read
+again without it (warning `styles_dropped` in `meta.load_warnings`): cells and formulas are kept. In the web UI a
+failed upload stays in the list with the reason, what to do, its technical details and *Re-parse* / *Remove*;
+uploading a `.csv`, `.xls` or other type is refused with a message naming the type. Any other error while parsing is
+recorded as `parse_failed` with the original kept, so it can be re-parsed once SheetIR is fixed.
+
+### Fixing tables
+
+Table detection is a guess, so the user can correct it. In the web UI's sheet structure view, **Fix tables** turns the
+grid into an editor: drag across cells to select a range, add it as a table, set its header row count and whether its
+last row is a total, rename or remove tables, and save. Saving re-parses and re-verifies the workbook; that sheet then
+uses exactly the user's tables (`source = "user"`, shown as *Edited*) on every later parse, while other sheets keep
+automatic detection. *Back to automatic detection* drops the correction.
+
+Corrections are stored per result in `data/<id>/overrides.json` (`{"sheets": {"Sheet": [{"range": "A5:M40",
+"header_rows": 1, "total": false, "name": "…"}]}}`) and recorded in `meta.user_tables`. The API validates them (a real
+range, at least one body row, no overlaps). From Python, pass the same structure to `build_ir(..., user_tables=...)`.
+
+### Parse verification
+
+`bench/verify_parse.py` checks a SheetIR database against its workbook re-read with plain openpyxl, using none of
+SheetIR's parsing code: every non-empty cell is present with the same value or formula (and nothing extra); a workbook
+rebuilt from the IR alone has the same cells; the cells each formula reads, found with openpyxl's tokenizer (defined
+names and structured references resolved by the checker itself), are its precedents in the IR; translating each
+group's anchor formula to every member reproduces the member's formula; planted problems are reported; detected tables
+match hand-labeled ranges. A `tamper` run damages the IR first (a value, a cell, a formula, a dependency) and must
+fail. `tests/test_verify.py` runs both on the sample.
+
+```bash
+uv run python bench/verify_parse.py spec.json -o report.json
+```
 
 ### Table detection benchmark
 

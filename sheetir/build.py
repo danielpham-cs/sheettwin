@@ -106,6 +106,7 @@ class BuildResult:
     counts: dict[str, int]
     checks: list[tuple[str, bool, str, str]]
     issues_by_kind: dict[str, int] = field(default_factory=dict)
+    verification: dict | None = None  # sheetir.verify report: status, checks, coverage
 
 
 def _expand(ref: Ref, cells_by_sheet: dict[str, dict[tuple[int, int], CellKey]]) -> list[CellKey]:
@@ -151,9 +152,12 @@ def _norm(formula: str) -> str:
     return "".join(out)
 
 
-def build_ir(xlsx: str | Path, db_path: str | Path, table_scorer: str = "hand") -> BuildResult:
+def build_ir(xlsx: str | Path, db_path: str | Path, table_scorer: str = "hand", verify: bool = True,
+             user_tables: dict[str, list[dict]] | None = None) -> BuildResult:
     """Parse `xlsx` into a SheetIR database. `table_scorer` picks how header rows are recognized:
-    "hand" (hand-set weights) or "model" (classifiers trained on StatSheets)."""
+    "hand" (hand-set weights) or "model" (classifiers trained on StatSheets). With `verify`, the database is then
+    checked against the workbook re-read independently (sheetir.verify), and the report stored in its meta table.
+    `user_tables` (sheet -> table specs) replaces table detection on those sheets with the user's tables."""
     raw = load(xlsx)
     cells = raw.cells
     resolver = WorkbookResolver(raw)
@@ -170,7 +174,11 @@ def build_ir(xlsx: str | Path, db_path: str | Path, table_scorer: str = "hand") 
     groups = group_formulas(keys)
     group_of = {ck: g.group_id for g in groups for ck in g.cells}
 
-    tables = detect_tables(raw, refs_of, {g.anchor for g in groups if g.axis == "col"}, get_scorer(table_scorer))
+    unknown = sorted(set(user_tables or {}) - set(raw.sheets))
+    if unknown:
+        raise ValueError(f"user tables name sheets that do not exist: {unknown}")
+    tables = detect_tables(raw, refs_of, {g.anchor for g in groups if g.axis == "col"}, get_scorer(table_scorer),
+                           user_tables)
     for t in tables:
         assign_field_keys(t, keys)
 
@@ -372,6 +380,7 @@ def build_ir(xlsx: str | Path, db_path: str | Path, table_scorer: str = "hand") 
     rows = {
         "meta": [("source", str(raw.path)), ("sha256", raw.sha256), ("sheetir_version", __version__),
                  ("ir_schema", str(store.IR_SCHEMA)), ("table_scorer", table_scorer), ("sheets", dumps(raw.sheets)),
+                 ("load_warnings", dumps(raw.warnings)), ("user_tables", dumps(user_tables or {})),
                  ("built_at", dt.datetime.now().isoformat(timespec="seconds"))],
         "cells": cell_rows,
         "formula_groups": group_rows,
@@ -399,7 +408,15 @@ def build_ir(xlsx: str | Path, db_path: str | Path, table_scorer: str = "hand") 
         "formula_groups": len(groups), "tables": len(tables), "params": len(params),
         "edges": len(edges), "relations": len(relations), "issues": len(issues),
     }
-    return BuildResult(Path(db_path), counts, checks, dict(by_kind))
+    report = None
+    if verify:
+        from . import verify as independent
+        try:
+            report = independent.verify(xlsx, db_path)
+        except Exception as exc:  # noqa: BLE001 - a failed check must not lose the parse result
+            report = {"status": "unverified", "error": f"{type(exc).__name__}: {exc}", "checks": {}, "coverage": None}
+        independent.record(db_path, report)
+    return BuildResult(Path(db_path), counts, checks, dict(by_kind), report)
 
 
 def _find_cycle_cells(parsed, precedents) -> list[CellKey]:

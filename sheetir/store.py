@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 
 # Bumped when the tables below change; the web UI offers to re-parse databases built with an older one.
-IR_SCHEMA = 2
+IR_SCHEMA = 3  # 3: meta carries parse_status, verification and load_warnings
 
 SCHEMA = """
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);

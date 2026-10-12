@@ -61,7 +61,7 @@ class Table:
     table_id: int
     sheet: str
     name: str
-    source: str  # listobject | detected
+    source: str  # listobject (declared in Excel) | detected (from the layout) | user (defined by the user)
     header_row: int | None  # bottom header row; its cells name the fields
     row_start: int
     row_end: int
@@ -203,14 +203,32 @@ def _continues_body(body: list[list[str | None]], nxt: list[RawCell | None]) -> 
     return agree >= 0.8 * len(filled)
 
 
+def user_table(sheet: str, spec: dict, at) -> Table:
+    """A table the user defined: {"range": "A3:F20", "header_rows": 1, "total": false, "name": optional}.
+
+    The first `header_rows` rows are the header (0: none), the last row is the total row when `total` is set, and rows
+    empty across the range inside the body are gaps."""
+    c1, r1, c2, r2 = range_boundaries(spec["range"].replace("$", ""))
+    n = max(0, int(spec.get("header_rows", 1)))
+    header_row = r1 + n - 1 if n else None
+    total = r2 if spec.get("total") else None
+    start, end = r1 + n, (r2 - 1 if total else r2)
+    gaps = [r for r in range(start, end + 1) if all(at(sheet, r, c) is None for c in range(c1, c2 + 1))]
+    return Table(0, sheet, spec.get("name") or "", "user", header_row, start, end, c1, c2, total_row=total,
+                 header_top=r1 if n > 1 else None, gap_rows=gaps, confidence=1.0)
+
+
 def detect_tables(raw: RawWorkbook, refs_of: dict[CellKey, list],
-                  group_starts: set[CellKey] = frozenset(), scorer=None) -> list[Table]:
-    """Declared Excel Tables first, then tables inferred from the layout.
+                  group_starts: set[CellKey] = frozenset(), scorer=None,
+                  user_tables: dict[str, list[dict]] | None = None) -> list[Table]:
+    """Declared Excel Tables first, then tables the user defined, then tables inferred from the layout.
 
     `group_starts` are the first cells of filled-down formula groups: a computed column
     starting right under a row is evidence that the row is a header. `scorer` decides which
-    rows are headers (default: tablemodel.default_scorer()).
+    rows are headers (default: tablemodel.default_scorer()). `user_tables` maps a sheet to the tables
+    the user defined there (see user_table); such a sheet gets exactly those, and no detection.
     """
+    user_tables = user_tables or {}
     scorer = scorer or default_scorer()
     grid = make_grid(raw, refs_of, group_starts)
     at = grid.at
@@ -233,7 +251,15 @@ def detect_tables(raw: RawWorkbook, refs_of: dict[CellKey, list],
         claim(Table(len(tables) + 1, td.sheet, td.name, "listobject", header, start, end,
                     ref.c1, ref.c2, total_row=ref.r2 if td.totals_rows else None))
 
+    for sheet, specs in user_tables.items():
+        for spec in specs:
+            t = user_table(sheet, spec, at)
+            t.table_id = len(tables) + 1
+            claim(t)
+
     for sheet in raw.sheets:
+        if sheet in user_tables:
+            continue
         for row, run in header_candidates(grid, sheet, claimed):
             if any((sheet, row, c) in claimed for c in run):
                 continue
@@ -260,7 +286,8 @@ def detect_tables(raw: RawWorkbook, refs_of: dict[CellKey, list],
     taken: set[str] = set()
     per_sheet = Counter(t.sheet for t in tables)
     for t in tables:
-        base = t.name if t.source == "listobject" else split_label(t.sheet)[0]
+        base = (t.name if t.source == "listobject" else split_label(t.name)[0] if t.source == "user" and t.name
+                else split_label(t.sheet)[0])
         if t.source != "listobject" and per_sheet[t.sheet] > 1 and t.header_row:
             first = at(t.sheet, t.header_row, t.c1)
             base = f"{base}_{split_label(str(first.value))[0]}" if first else base
