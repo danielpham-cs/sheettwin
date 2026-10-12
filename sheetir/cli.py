@@ -43,7 +43,7 @@ def _cmd_build(args) -> int:
               + (f" ({c['references']['skipped']} not checkable)" if c['references']['skipped'] else ""))
         print(f"  groups     {c['groups']['ok']}/{c['groups']['members']} members reproduce their group's formula")
         print(f"  coverage   {cov['understood']}/{cov['formulas']} formulas fully understood"
-              + (f"; not modeled: {', '.join(f'{x['count']} {x['kind']}' for x in cov['ignored'])}" if cov['ignored'] else ""))
+              + (f"; not modeled: {', '.join(str(x['count']) + ' ' + x['kind'] for x in cov['ignored'])}" if cov['ignored'] else ""))
     ok = all(p or s != "error" for _, p, s, _ in res.checks)
     return 0 if ok and (not v or v["status"] != "check_failed") else 1
 

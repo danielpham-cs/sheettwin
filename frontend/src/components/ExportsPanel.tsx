@@ -1,8 +1,12 @@
 "use client";
 
-import { Braces, Check, Copy, Database, Download, Eye, FileSpreadsheet, GitCompare, Loader2, Sheet, X } from "lucide-react";
+import {
+  Braces, Check, Copy, Database, Download, ExternalLink, Eye, FileCode2, FileSpreadsheet, FileText, GitCompare, Loader2, Sheet, X,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api, formatSize, type DiffResult, type ExportFile, type Workbook } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
@@ -11,9 +15,11 @@ const FORMAT_STYLE: Record<string, { icon: typeof Database; tint: string }> = {
   SQLite: { icon: Database, tint: "from-violet-500/30 to-violet-400/5 text-violet-300" },
   JSON: { icon: Braces, tint: "from-amber-500/30 to-amber-400/5 text-amber-300" },
   CSV: { icon: Sheet, tint: "from-cyan-500/30 to-cyan-400/5 text-cyan-300" },
+  HTML: { icon: FileCode2, tint: "from-rose-500/30 to-rose-400/5 text-rose-300" },
+  Markdown: { icon: FileText, tint: "from-sky-500/30 to-sky-400/5 text-sky-300" },
 };
 
-const PREVIEWABLE = new Set(["JSON", "CSV"]);
+const PREVIEWABLE = new Set(["JSON", "CSV", "Markdown"]);
 const PREVIEW_ROWS = 200;
 
 function parseCsv(text: string): string[][] {
@@ -45,7 +51,7 @@ type Props = {
 };
 
 export function ExportsPanel({ open, workbookId, workbookName, workbook, versions, onOpenCell, onClose }: Props) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   // Keyed by workbook id so switching workbooks shows the skeleton instead of stale files.
   const [result, setResult] = useState<{ id: string; files?: ExportFile[]; error?: string } | null>(null);
   const current = result && result.id === workbookId ? result : null;
@@ -57,11 +63,11 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
   useEffect(() => {
     if (!open || !workbookId) return;
     let live = true;
-    api.exports(workbookId)
+    api.exports(workbookId, lang)
       .then((f) => live && setResult({ id: workbookId, files: f }))
       .catch((e) => live && setResult({ id: workbookId, error: e.message }));
     return () => { live = false; };
-  }, [open, workbookId]);
+  }, [open, workbookId, lang]);
 
   useEffect(() => {
     if (!open) return;
@@ -78,7 +84,7 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
     if (!workbookId) return;
     setLoadingPreview(file.name);
     try {
-      const text = await (await fetch(api.exportUrl(workbookId, file.name))).text();
+      const text = await (await fetch(api.exportUrl(workbookId, file.name, { lang }))).text();
       setPreview({ file, text: text.replace(/^﻿/, "") });
     } finally {
       setLoadingPreview(null);
@@ -139,6 +145,18 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
                         {f.format} · {formatSize(f.size)}
                       </span>
                     </span>
+                    {f.format === "HTML" && (
+                      <a
+                        href={api.exportUrl(workbookId!, f.name, { lang, inline: true })}
+                        target="_blank"
+                        rel="noopener"
+                        aria-label={t.exports.openTab}
+                        title={t.exports.openTab}
+                        className="rounded-lg p-2 text-zinc-400 opacity-70 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
+                      >
+                        <ExternalLink className="size-4" />
+                      </a>
+                    )}
                     {PREVIEWABLE.has(f.format) && (
                       <button
                         onClick={() => openPreview(f)}
@@ -149,7 +167,7 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
                       </button>
                     )}
                     <a
-                      href={api.exportUrl(workbookId!, f.name)}
+                      href={api.exportUrl(workbookId!, f.name, { lang })}
                       aria-label={t.exports.download}
                       className="rounded-lg p-2 text-zinc-400 opacity-70 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
                     >
@@ -191,6 +209,10 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
               <div className="overflow-auto">
                 {preview.file.format === "JSON" ? (
                   <pre className="p-6 font-mono text-xs leading-relaxed text-zinc-300">{preview.text}</pre>
+                ) : preview.file.format === "Markdown" ? (
+                  <div className="md p-6">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.text}</ReactMarkdown>
+                  </div>
                 ) : (
                   <CsvTable rows={parseCsv(preview.text)} />
                 )}

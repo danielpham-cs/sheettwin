@@ -18,6 +18,7 @@ import datetime as dt
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -33,9 +34,12 @@ from pydantic import BaseModel
 from .. import __version__
 from ..build import build_ir
 from ..convert import SUFFIXES
+from ..llm import get_llm
 from ..loader import WorkbookError
+from ..report import audit_report, to_html, to_markdown
 from ..sample import make_quotation
 from ..store import IR_SCHEMA, TRACE_SQL
+from ..understand import ask
 from . import graph, provenance
 from .charts import charts
 from .chat import answer, find_cells
@@ -47,6 +51,7 @@ MAX_SQL_ROWS = 500
 MAX_LAYOUT_CELLS = 30_000  # per sheet, for the overview minimaps
 
 app = FastAPI(title="SheetTwin · SheetIR")
+log = logging.getLogger("sheetir.web")
 
 
 def data_dir() -> Path:
@@ -470,9 +475,41 @@ class ChatRequest(BaseModel):
     lang: str = "zh"  # reply language: zh | en
 
 
+@app.get("/api/llm")
+def llm_status():
+    """Whether chat answers come from a language model (OPENAI_API_KEY set) or from the built-in rules."""
+    llm = get_llm()
+    return {"enabled": llm is not None, "model": llm.model if llm else None}
+
+
+def _only_cells(con: sqlite3.Connection, message: str) -> bool:
+    """The message is nothing but cell ids: the rule-based cell card (formula, group, issues, links) answers it."""
+    cells = find_cells(con, message)
+    rest = re.sub(r"(?:'[^']+'|[A-Za-z_][\w.]*)![$A-Za-z]+\$?\d+", "", message)
+    return bool(cells) and not re.sub(r"[\s,，、;；?？.。]", "", rest)
+
+
 @app.post("/api/workbooks/{wid}/chat")
 def chat(wid: str, req: ChatRequest):
-    return answer(_connect(wid), req.message, req.lang)
+    """Answer with the language model when one is configured (sheetir.understand.ask, grounded in the IR), else with
+    the built-in rules. Bare cell ids always get the rule-based cell card; if the model fails, the rules answer and
+    `fallback` says why."""
+    con = _connect(wid)
+    llm = get_llm()
+    if llm is None or _only_cells(con, req.message):
+        return {**answer(con, req.message, req.lang), "source": "rules"}
+    try:
+        r = ask(con, req.message, llm, req.lang)
+    except Exception as e:  # any failure of the model path: the user still gets an answer, and the reason
+        log.exception("LLM chat failed; answering with the rules")
+        return {**answer(_connect(wid), req.message, req.lang), "source": "rules",
+                "fallback": f"{type(e).__name__}: {e}"[:300]}
+    # cell ids as code, which the chat UI makes clickable (the rule-based replies write them that way too)
+    known = set(r["cells"])
+    reply = re.sub(r"`[^`]*`|((?:'[^']+'|[A-Za-z_][\w.]*)![A-Z]{1,3}\d+)",
+                   lambda m: f"`{m[1]}`" if m[1] in known else m[0], r["reply"])
+    return {"reply": reply, "cells": r["cells"], "source": "llm", "model": r["model"], "route": r["route"],
+            "sql": r["sql"], "grounded": r["grounded"], "ungrounded": r["ungrounded"]}
 
 
 @app.get("/api/workbooks/{wid}/graph")
@@ -500,7 +537,10 @@ EXPORTS = {
     "cells.csv": ("儲存格清單", "CSV", "text/csv"),
     "issues.csv": ("問題清單", "CSV", "text/csv"),
     "formula_groups.csv": ("公式群組", "CSV", "text/csv"),
+    "audit_report.html": ("稽核報告", "HTML", "text/html; charset=utf-8"),
+    "audit_report.md": ("稽核報告", "Markdown", "text/markdown; charset=utf-8"),
 }
+REPORTS = {"audit_report.html": to_html, "audit_report.md": to_markdown}
 CSV_SQL = {
     "cells.csv": "SELECT cell_id, sheet, a1, vtype, role, semantic, value, cached, formula, r1c1, group_id "
                  "FROM cells ORDER BY sheet, row, col",
@@ -510,7 +550,9 @@ CSV_SQL = {
 }
 
 
-def _export_bytes(wid: str, name: str) -> bytes:
+def _export_bytes(wid: str, name: str, lang: str = "zh") -> bytes:
+    if name in REPORTS:
+        return REPORTS[name](audit_report(_connect(wid), lang)).encode("utf-8")
     if name == "model.json":
         return json.dumps(model(wid), ensure_ascii=False, indent=2, default=str).encode("utf-8")
     con = _connect(wid)
@@ -523,25 +565,31 @@ def _export_bytes(wid: str, name: str) -> bytes:
 
 
 @app.get("/api/workbooks/{wid}/exports")
-def list_exports(wid: str):
+def list_exports(wid: str, lang: str = "zh"):
     db = _db_path(wid)
     out = [{"name": src.name, "label": "原始活頁簿", "format": src.suffix[1:].upper(), "size": src.stat().st_size,
             "source": True} for src in db.parent.iterdir() if src.suffix.lower() in SUFFIXES]
     for name, (label, fmt, _) in EXPORTS.items():
-        size = db.stat().st_size if name == "ir.db" else len(_export_bytes(wid, name))
+        size = db.stat().st_size if name == "ir.db" else len(_export_bytes(wid, name, lang))
         out.append({"name": name, "label": label, "format": fmt, "size": size, "source": False})
     return out
 
 
 @app.get("/api/workbooks/{wid}/exports/{name}")
-def download_export(wid: str, name: str):
+def download_export(wid: str, name: str, lang: str = "zh", inline: bool = False):
+    """One converted file. Reports are written in `lang` (zh | en); with `inline`, a report opens in the browser
+    instead of downloading (the HTML report can then be printed or saved as PDF)."""
     db = _db_path(wid)
     stem = Path(dict(_connect(wid).execute("SELECT key, value FROM meta").fetchall())["source"]).stem
     if name == "ir.db":
         return FileResponse(db, media_type=EXPORTS[name][2], filename=f"{stem}.{wid}.sheetir.db")
     if name in EXPORTS:
-        return Response(_export_bytes(wid, name), media_type=EXPORTS[name][2],
-                        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(f'{stem}.{wid}.{name}')}"})
+        filename = f"{stem}.{wid}.{name}"
+        if name in REPORTS and lang == "en":
+            filename = filename.replace("audit_report", "audit_report.en")
+        disposition = "inline" if inline and name in REPORTS else "attachment"
+        return Response(_export_bytes(wid, name, lang), media_type=EXPORTS[name][2],
+                        headers={"Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}"})
     src = db.parent / Path(name).name
     if src.suffix.lower() in SUFFIXES and src.is_file():
         return FileResponse(src, filename=src.name)
