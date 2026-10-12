@@ -89,7 +89,7 @@ export function UploadDialog({ open, onClose, onDone }: Props) {
                 </>
               )}
             </button>
-            <input ref={input} type="file" accept=".xlsx,.xlsm" hidden onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
+            <input ref={input} type="file" accept=".xlsx,.xlsm,.xls,.ods,.csv,.tsv" hidden onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
 
             {error && (
               <p className="mt-3 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>

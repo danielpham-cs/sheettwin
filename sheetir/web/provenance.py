@@ -25,6 +25,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+from ..convert import SUFFIXES
+
 MANIFEST = "source.json"
 FAILURE = "error.json"
 OVERRIDES = "overrides.json"  # tables the user defined, per sheet: applied on every parse
@@ -109,7 +111,7 @@ def source_file(folder: Path) -> Path | None:
     p = folder / rec["name"]
     if p.exists():
         return p
-    return next((q for q in folder.iterdir() if q.suffix.lower() in (".xlsx", ".xlsm")), None)
+    return next((q for q in folder.iterdir() if q.suffix.lower() in SUFFIXES), None)
 
 
 def catalog(data: Path) -> list[dict]:

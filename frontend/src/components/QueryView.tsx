@@ -1,7 +1,8 @@
 "use client";
 
 import { Database, Download, Loader2, Play } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SqlEditor, type SqlEditorHandle } from "@/components/SqlEditor";
 import { api, type SqlResult } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
@@ -54,7 +55,8 @@ export function QueryView({ workbookId, workbookName, onOpenCell }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [schema, setSchema] = useState<Schema>([]);
-  const editor = useRef<HTMLTextAreaElement>(null);
+  const [lintError, setLintError] = useState<string | null>(null);
+  const editor = useRef<SqlEditorHandle>(null);
 
   async function run(q = query) {
     if (!workbookId) return;
@@ -82,14 +84,12 @@ export function QueryView({ workbookId, workbookName, onOpenCell }: Props) {
     return () => { live = false; };
   }, [workbookId]);
 
-  function insert(text: string) {
-    const el = editor.current;
-    if (!el) return;
-    const { selectionStart: a, selectionEnd: b } = el;
-    const next = query.slice(0, a) + text + query.slice(b);
-    setQuery(next);
-    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(a + text.length, a + text.length); });
-  }
+  const insert = (text: string) => editor.current?.insert(text);
+  const completionSchema = useMemo(() => Object.fromEntries(schema.map((s) => [s.name, s.columns])), [schema]);
+  const check = useCallback(
+    async (q: string) => (workbookId ? (await api.sqlCheck(workbookId, q)).error : null),
+    [workbookId],
+  );
 
   function downloadCsv() {
     if (!result) return;
@@ -122,15 +122,16 @@ export function QueryView({ workbookId, workbookName, onOpenCell }: Props) {
         </div>
 
         <div className="glow-border rounded-2xl bg-[#141419]/90">
-          <textarea ref={editor} value={query} onChange={(e) => setQuery(e.target.value)} spellCheck={false}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); } }}
-            className="block h-40 w-full resize-y bg-transparent p-4 font-mono text-[13px] leading-relaxed text-zinc-100 outline-none" />
+          <SqlEditor ref={editor} value={query} onChange={setQuery} onRun={() => run()} check={check} onError={setLintError}
+            schema={completionSchema} didYouMean={t.query.didYouMean} />
           <div className="flex items-center gap-3 border-t border-white/5 px-3 py-2">
             <button onClick={() => run()} disabled={running}
               className="flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-400 px-3 py-1 text-sm font-medium text-white shadow-lg shadow-violet-500/20 disabled:opacity-60">
               {running ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{t.query.run}
             </button>
-            <span className="text-xs text-zinc-500">{t.query.shortcut}</span>
+            {lintError
+              ? <span className="min-w-0 truncate font-mono text-xs text-rose-300" title={lintError}>{lintError}</span>
+              : <span className="text-xs text-zinc-500">{t.query.shortcut}</span>}
             {result && (
               <>
                 <span className="ml-auto text-xs text-zinc-400">{t.query.rows(result.rows.length, result.truncated)}</span>

@@ -53,6 +53,22 @@ The original workbook is never modified.
 
 ## Quick start
 
+### With Docker (just to use it)
+
+Requirements: [Docker](https://docs.docker.com/get-docker/) (Docker Desktop on Windows and macOS). No Python, Node or
+uv needed.
+
+```bash
+docker compose up --build    # http://localhost:8765 (first build takes a few minutes)
+```
+
+After pulling new code, run the same command again to rebuild. Uploads and SheetIR databases live in the Docker volume
+`sheettwin-data`, so they survive rebuilds (`docker compose down -v` deletes them). To enable the LLM features, put
+`OPENAI_API_KEY=...` (and optionally `SHEETIR_LLM_MODEL`, `OPENAI_BASE_URL`) in a `.env` file next to
+`docker-compose.yml`; it is read when the container starts and never copied into the image.
+
+### From source (to work on it)
+
 Requirements: [uv](https://docs.astral.sh/uv/) (it installs Python 3.11+ and all dependencies) and
 [Node.js](https://nodejs.org/) 20+ for the chat UI.
 
@@ -67,6 +83,9 @@ cd ..
 
 uv run sheetir serve         # http://127.0.0.1:8765
 ```
+
+`uv run` installs any dependency added since the last sync (from `uv.lock`) before starting, so after a pull there is
+no separate `uv sync` step.
 
 | URL | Page |
 |---|---|
@@ -147,7 +166,7 @@ npm run build                        # include the new screenshots
 
 | Part | Contents |
 |---|---|
-| **新增資料** button | Upload dialog: drag and drop an `.xlsx`/`.xlsm`, or load the sample workbook |
+| **新增資料** button | Upload dialog: drag and drop an `.xlsx`/`.xlsm`/`.xls`/`.ods`/`.csv`, or load the sample workbook |
 | **轉換檔案** button | Files derived from the workbook (original, `ir.db`, `model.json`, CSVs), with preview and download |
 | **工作表結構** button | Sheet structure: a spreadsheet-like grid of each sheet. *Structure* tints every detected table (header rows, body, total row, key column) and outlines it, and marks parameters and outputs outside tables; *Roles* colors cells as input, computed, output or unused. Issue cells are outlined, *Show formulas* shows formulas instead of values, and the tables on the sheet are listed above the grid. Clicking a table shows its header, body, key and fields; clicking a cell shows where it sits (*table quote → row "Cover plate" → field margin*), its formula and R1C1 pattern, its calculation group, its issues (explained), its sources and users, with links to the dependency graph and the chat. A banner offers **Re-parse** when the result was built with an older IR schema |
 | **SQL 查詢** button | SQL against the workbook's SheetIR database, with example queries and the tables and columns of the schema (click to insert). Only `SELECT`/`WITH` is accepted and the database is opened read-only; up to 500 rows, downloadable as CSV. Cell ids in the result open the cell in the sheet structure view |
@@ -479,12 +498,14 @@ FROM fields f JOIN tables t USING(table_id) WHERE t.name = 'quote' ORDER BY f.co
 ```
 SheetTwin/
 ├── pyproject.toml
+├── Dockerfile, docker-compose.yml   one image: UI built by Node, served by `sheetir serve`
 ├── bench/
 │   ├── eval_statsheets.py     table detection scored against the StatSheets benchmark
 │   └── train_table_model.py   train the header classifiers, with cross-validation
 ├── sheetir/
 │   ├── refs.py        A1 parsing, R1C1 relativization, cell ids
 │   ├── loader.py      L0: read formulas, cached values, tables, names, validation
+│   ├── convert.py     .csv / .xls / .ods -> .xlsx before parsing
 │   ├── formula.py     L1: tokenize, resolve references, R1C1 templates, literals, calls
 │   ├── groups.py      L2: group identical R1C1 formulas
 │   ├── structure.py   L2/L3: tables, fields, roles, anomalies, labels
@@ -521,7 +542,7 @@ SheetTwin/
 uv run pytest
 ```
 
-94 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL), provenance (duplicate uploads, aliases, versions, diffs, download names), the independent parse check and its tamper control, unreadable files (old .xls, password, not a workbook, damaged package, broken formatting) and failed uploads, user table corrections (applied on re-parse, validated, reset), chat answers, dependency graphs and chart data. The chat UI itself is not covered by automated tests yet.
+106 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL), provenance (duplicate uploads, aliases, versions, diffs, download names), the independent parse check and its tamper control, conversion of .csv (dialects, encodings), .xls and .ods (formulas, results, styles, names), unreadable files (password, not a workbook, damaged package, broken formatting) and failed uploads, user table corrections (applied on re-parse, validated, reset), chat answers, dependency graphs and chart data. The chat UI itself is not covered by automated tests yet.
 
 ---
 
@@ -542,11 +563,18 @@ workbook is re-read with plain openpyxl and compared with the database. The repo
 The report also lists the parts of the file SheetIR does not model (macros, pivot tables, charts, external links,
 comments, images, slicers), read from the package's part names.
 
-Files that cannot be read raise `WorkbookError` with a `kind`: `legacy_xls` (Excel 97-2003 renamed .xlsx),
+`.csv`/`.tsv`, `.xls` and `.ods` files (recognized from their bytes, not their names) are converted to an `.xlsx`
+first (`sheetir/convert.py`), and the parse and its check both read that conversion. Each leaves a warning in
+`meta.load_warnings`: `from_csv` (one sheet of values; encoding and delimiter detected; numbers, dates, percentages and
+booleans typed, ids with leading zeros kept as text), `from_xls` plus `formulas_dropped` (xlrd reads values, cached
+results, merges, formatting and names, but not formulas), `from_ods` (formulas translated from OpenFormula to Excel
+syntax, with their cached results).
+
+Files that cannot be read raise `WorkbookError` with a `kind`: `legacy_xls` (`loader.load` given an .xls directly),
 `encrypted` (password protected), `not_a_workbook`, `corrupt`. A workbook whose formatting part is unreadable is read
 again without it (warning `styles_dropped` in `meta.load_warnings`): cells and formulas are kept. In the web UI a
 failed upload stays in the list with the reason, what to do, its technical details and *Re-parse* / *Remove*;
-uploading a `.csv`, `.xls` or other type is refused with a message naming the type. Any other error while parsing is
+uploading any other type is refused with a message naming the type. Any other error while parsing is
 recorded as `parse_failed` with the original kept, so it can be re-parsed once SheetIR is fixed.
 
 ### Fixing tables
