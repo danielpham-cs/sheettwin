@@ -3,7 +3,9 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
+import sheetir.web.app
 from sheetir import build_ir
+from sheetir.llm import LLMError
 from sheetir.sample import make_quotation
 from sheetir.web import graph
 from sheetir.web.app import app
@@ -293,3 +295,46 @@ def test_bad_user_tables_are_refused(client, wid, tables, kind):
 def test_unknown_sheet(client, wid):
     r = client.put(f"/api/workbooks/{wid}/user-tables/Nope", json={"tables": []})
     assert r.status_code == 404
+
+
+# ---- chat with a language model -------------------------------------------------------------------
+
+class _ScriptedLLM:
+    model = "scripted"
+
+    def __init__(self, *replies):
+        self.replies = list(replies)
+
+    def json(self, system, user, schema, name="answer"):
+        if not self.replies:
+            raise LLMError("cannot reach the model")
+        return self.replies.pop(0)
+
+
+def test_chat_without_a_model_uses_the_rules(client, wid):
+    assert client.get("/api/llm").json() == {"enabled": False, "model": None}
+    r = client.post(f"/api/workbooks/{wid}/chat", json={"message": "有哪些問題？", "lang": "zh"}).json()
+    assert r["source"] == "rules" and "Quote!I13" in r["reply"]
+
+
+def test_chat_answers_with_the_model_from_the_data(client, wid, monkeypatch):
+    llm = _ScriptedLLM({"route": "data", "answer": "", "sql": "SELECT product FROM table_quote WHERE material = 'AL'"},
+                       {"answer": "Heat sink 40, Heat sink 60, Shield can and Gear housing use AL (see Quote!B6, "
+                                  "`Quote!B7`)."})
+    monkeypatch.setattr(sheetir.web.app, "get_llm", lambda: llm)
+    r = client.post(f"/api/workbooks/{wid}/chat", json={"message": "Which products use AL?", "lang": "zh"}).json()
+    assert r["source"] == "llm" and r["model"] == "scripted" and r["route"] == "data"
+    assert r["grounded"] and "table_quote" in r["sql"] and "Gear housing" in r["reply"]
+    assert "(see `Quote!B6`, `Quote!B7`)" in r["reply"]  # cell ids become clickable code, once
+
+
+def test_chat_bare_cell_gets_the_rule_based_card(client, wid, monkeypatch):
+    monkeypatch.setattr(sheetir.web.app, "get_llm", lambda: _ScriptedLLM())
+    r = client.post(f"/api/workbooks/{wid}/chat", json={"message": "quote!j13", "lang": "en"}).json()
+    assert r["source"] == "rules" and "fallback" not in r and r["cells"] == ["Quote!J13"]
+
+
+def test_chat_falls_back_to_the_rules_when_the_model_fails(client, wid, monkeypatch):
+    monkeypatch.setattr(sheetir.web.app, "get_llm", lambda: _ScriptedLLM())
+    r = client.post(f"/api/workbooks/{wid}/chat", json={"message": "What issues are there?", "lang": "en"}).json()
+    assert r["source"] == "rules" and "cannot reach the model" in r["fallback"] and "Quote!I13" in r["reply"]

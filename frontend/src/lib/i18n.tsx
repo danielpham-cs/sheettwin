@@ -81,7 +81,9 @@ const zh = {
     labels: {
       source: "原始活頁簿", "ir.db": "SheetIR 資料庫", "model.json": "語意模型",
       "cells.csv": "儲存格清單", "issues.csv": "問題清單", "formula_groups.csv": "公式群組",
+      "audit_report.html": "稽核報告（網頁，可列印成 PDF）", "audit_report.md": "稽核報告（Markdown）",
     } as Record<string, string>,
+    openTab: "在新分頁開啟，可列印或存成 PDF",
   },
   chat: {
     suggestions: [
@@ -113,6 +115,12 @@ const zh = {
     placeholderEmpty: "先新增一份活頁簿",
     send: "送出",
     footer: "Enter 送出 · Shift + Enter 換行 · 點擊回覆中的儲存格可以繼續追溯",
+    ai: (model: string) => `AI 回答 · ${model}`,
+    grounded: "數字皆已對照資料核對",
+    ungrounded: (nums: string) => `無法核對的數字：${nums}`,
+    showSql: "查看執行的查詢",
+    fallback: "AI 暫時無法回答，以下改由內建規則回覆",
+    thinking: "查詢資料並核對答案中…",
   },
   graph: {
     kinds: { param: "參數", input: "資料欄", formula: "公式", output: "輸出" },
@@ -518,7 +526,9 @@ const en: typeof zh = {
     labels: {
       source: "Original workbook", "ir.db": "SheetIR database", "model.json": "Semantic model",
       "cells.csv": "Cells", "issues.csv": "Issues", "formula_groups.csv": "Formula groups",
+      "audit_report.html": "Audit report (web page, printable to PDF)", "audit_report.md": "Audit report (Markdown)",
     },
+    openTab: "Open in a new tab to print or save as PDF",
   },
   chat: {
     suggestions: [
@@ -550,6 +560,12 @@ const en: typeof zh = {
     placeholderEmpty: "Add a workbook first",
     send: "Send",
     footer: "Enter to send · Shift + Enter for a new line · Click a cell in a reply to keep tracing",
+    ai: (model: string) => `AI answer · ${model}`,
+    grounded: "Every number checked against the data",
+    ungrounded: (nums: string) => `Numbers that could not be checked: ${nums}`,
+    showSql: "Show the query it ran",
+    fallback: "The AI could not answer, so the built-in rules replied instead",
+    thinking: "Querying the data and checking the answer…",
   },
   graph: {
     kinds: { param: "Parameter", input: "Data column", formula: "Formula", output: "Output" },
