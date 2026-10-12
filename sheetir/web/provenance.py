@@ -14,6 +14,9 @@ source.json records where the result came from:
 Results with the same file name are versions of one workbook, numbered by first upload (v1, v2, …).
 `diff` compares two results cell by cell.
 
+Issues the user marked as intended are kept in ignored.json ([{cell, kind, detail, note, at}, ...]) and applied on
+every parse; a new version of a workbook starts with the ignores of the version before it.
+
 An upload that could not be parsed keeps its folder (the copy and source.json) plus error.json: {kind, detail, at,
 sheetir_version}. It is listed with status "failed", so the user sees why and can retry once SheetIR handles it.
 """
@@ -30,6 +33,7 @@ from ..convert import SUFFIXES
 MANIFEST = "source.json"
 FAILURE = "error.json"
 OVERRIDES = "overrides.json"  # tables the user defined, per sheet: applied on every parse
+IGNORED = "ignored.json"  # issues the user marked as intended: applied on every parse
 MAX_DIFF_ROWS = 200
 
 
@@ -103,6 +107,31 @@ def save_user_tables(folder: Path, sheets: dict[str, list[dict]]) -> None:
         p.write_text(json.dumps({"sheets": sheets, "updated": now()}, ensure_ascii=False, indent=2), encoding="utf-8")
     else:
         p.unlink(missing_ok=True)
+
+
+def ignored(folder: Path) -> list[dict]:
+    p = folder / IGNORED
+    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
+
+
+def save_ignored(folder: Path, items: list[dict]) -> None:
+    p = folder / IGNORED
+    if items:
+        p.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    else:
+        p.unlink(missing_ok=True)
+
+
+def inherit_ignored(folder: Path) -> None:
+    """Give a new version the ignores of the most recent other upload with the same file name."""
+    if (folder / IGNORED).exists():
+        return
+    name = read(folder)["name"].lower()
+    others = [f for f in folder.parent.iterdir() if f != folder and (f / MANIFEST).exists() and (f / IGNORED).exists()
+              and read(f)["name"].lower() == name]
+    if others:
+        latest = max(others, key=lambda f: read(f).get("last_seq", 0))
+        save_ignored(folder, ignored(latest))
 
 
 def source_file(folder: Path) -> Path | None:

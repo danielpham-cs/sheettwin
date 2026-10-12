@@ -1,6 +1,6 @@
 "use client";
 
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type CompletionContext } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { sql, SQLite } from "@codemirror/lang-sql";
 import { bracketMatching, HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -120,6 +120,28 @@ export function locate(src: string, message: string, schema: SqlSchema, didYouMe
   return { from: 0, to: line < 0 ? src.length : line, severity: "error", message };
 }
 
+/** Column names anywhere (the SQL language completes them only after "table."), each with the tables that have it. */
+function columnCompletions(schema: SqlSchema) {
+  const tables = new Map<string, string[]>();
+  for (const [table, cols] of Object.entries(schema)) for (const c of cols) tables.set(c, [...(tables.get(c) ?? []), table]);
+  const options = [...tables].map(([label, ts]) => ({
+    label, type: "property", boost: 1, detail: ts.length > 2 ? `${ts.slice(0, 2).join(", ")}, …` : ts.join(", "),
+  }));
+  return (ctx: CompletionContext) => {
+    const word = ctx.matchBefore(/\w+/);
+    if (!word && !ctx.explicit) return null;
+    const from = word?.from ?? ctx.pos;
+    if (ctx.state.sliceDoc(from - 1, from) === ".") return null; // qualified: left to the SQL language
+    return { from, options, validFor: /^\w*$/ };
+  };
+}
+
+/** The SQL language for a schema, with column completion added. */
+const sqlFor = (schema: SqlSchema) => [
+  sql({ dialect: SQLite, schema, upperCaseKeywords: true }),
+  SQLite.language.data.of({ autocomplete: columnCompletions(schema) }),
+];
+
 const theme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "transparent", color: "#f4f4f5", fontSize: "13px" },
   "&.cm-focused": { outline: "none" },
@@ -179,7 +201,7 @@ export function SqlEditor({ value, onChange, onRun, check, onError, schema, didY
         extensions: [
           lineNumbers(), highlightActiveLine(), history(), bracketMatching(), closeBrackets(),
           autocompletion({ icons: false }),
-          language.current.of(sql({ dialect: SQLite, schema: props.current.schema, upperCaseKeywords: true })),
+          language.current.of(sqlFor(props.current.schema)),
           syntaxHighlighting(highlight), theme, lint, lintGutter(),
           Prec.highest(keymap.of([{ key: "Mod-Enter", run: () => { props.current.onRun(); return true; } }])),
           keymap.of([...closeBracketsKeymap, ...completionKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
@@ -198,7 +220,7 @@ export function SqlEditor({ value, onChange, onRun, check, onError, schema, didY
   }, [value]);
 
   useEffect(() => {
-    view.current?.dispatch({ effects: language.current.reconfigure(sql({ dialect: SQLite, schema, upperCaseKeywords: true })) });
+    view.current?.dispatch({ effects: language.current.reconfigure(sqlFor(schema)) });
   }, [schema]);
 
   useImperativeHandle(ref, () => ({

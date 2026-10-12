@@ -80,6 +80,55 @@ def test_rejects_bad_ids_and_writes(client, wid):
     assert r.status_code == 400
 
 
+def test_fixes_apply_as_the_next_version(client, wid):
+    s = client.get(f"/api/workbooks/{wid}/fixes").json()
+    assert s["can_apply"] and [f["fix"] for f in s["fixes"]] == ["=Quote!J5"]
+    assert client.post(f"/api/workbooks/{wid}/fixes/apply", json={"cells": ["Report!A1"]}).status_code == 400
+    r = client.post(f"/api/workbooks/{wid}/fixes/apply", json={"cells": ["Report!B6"]}).json()
+    assert r["applied"] == ["Report!B6"] and r["status"] == "verified" and r["id"] != wid
+    new = next(w for w in client.get("/api/workbooks").json() if w["id"] == r["id"])
+    assert (new["name"], new["version"], new["previous"]) == ("quotation_sample.xlsx", 2, wid)
+    assert client.get(f"/api/workbooks/{r['id']}/fixes").json()["fixes"] == []
+
+
+def _issue(client, wid, cell, kind):
+    return next(i for i in client.get(f"/api/workbooks/{wid}/resolve").json()["issues"]
+                if i["cell"] == cell and i["kind"] == kind)
+
+
+def test_ignored_issues_stop_being_reported_and_carry_over(client, wid):
+    i = _issue(client, wid, "Report!B1", "volatile")
+    key = {"cell": i["cell"], "kind": i["kind"], "detail": i["detail"]}
+    assert client.post(f"/api/workbooks/{wid}/ignored", json={**key, "note": "report date on purpose"}).json()["status"] == "partial"
+    r = client.get(f"/api/workbooks/{wid}/resolve").json()
+    assert all(x["cell"] != "Report!B1" for x in r["issues"])
+    assert [(x["cell"], x["note"]) for x in r["ignored"]] == [("Report!B1", "report date on purpose")]
+    assert all(x["cell_id"] != "Report!B1" for x in client.get(f"/api/workbooks/{wid}/issues").json())
+    # not-understood formulas cannot be ignored
+    b6 = _issue(client, wid, "Report!B6", "dynamic_ref")
+    assert client.post(f"/api/workbooks/{wid}/ignored", json={k: b6[k] for k in ("cell", "kind", "detail")}).status_code == 400
+    # the next version keeps the ignore
+    v2 = client.post(f"/api/workbooks/{wid}/edits", json={"edits": {"Inputs!B9": ""}}).json()
+    assert v2["edited"] == ["Inputs!B9"]
+    assert [x["cell"] for x in client.get(f"/api/workbooks/{v2['id']}/resolve").json()["ignored"]] == ["Report!B1"]
+    # and it can be reported again
+    client.post(f"/api/workbooks/{wid}/ignored/remove", json=key)
+    assert _issue(client, wid, "Report!B1", "volatile")
+
+
+def test_edits_write_what_the_user_typed(client, wid):
+    g17 = _issue(client, wid, "Quote!G17", "hardcoded_in_formula_column")
+    assert g17["recommendation"]["edits"] == {"Quote!G17": "=E17*LaborRate"}
+    r = client.post(f"/api/workbooks/{wid}/edits", json={"edits": {"Quote!G17": "=E17*LaborRate", "Inputs!A12": "note",
+                                                                   "Inputs!B12": "42"}}).json()
+    cell = lambda c: client.get(f"/api/workbooks/{r['id']}/cell", params={"id": c}).json()["cell"]
+    assert cell("Quote!G17")["formula"] == "=E17*LaborRate"
+    assert (cell("Inputs!A12")["value"], cell("Inputs!B12")["value"]) == ("note", 42)
+    assert all(i["cell"] != "Quote!G17" for i in client.get(f"/api/workbooks/{r['id']}/resolve").json()["issues"])
+    bad = client.post(f"/api/workbooks/{wid}/edits", json={"edits": {"Quote!G17": "=SUM(("}})
+    assert bad.status_code == 400
+
+
 def test_sql_check_compiles_without_running(client, wid):
     check = lambda q: client.post(f"/api/workbooks/{wid}/sql/check", json={"query": q}).json()["error"]
     assert check("SELECT * FROM cells LIMIT 5") is None

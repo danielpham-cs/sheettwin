@@ -25,6 +25,7 @@ from .structure import (
     field_anomalies, find_label, split_label, unique,
 )
 from .tablemodel import get_scorer
+from .verify import NOT_UNDERSTOOD
 
 TRIVIAL_LITERALS = {0.0, 1.0, -1.0, 2.0, 12.0, 100.0, 1000.0}
 
@@ -156,20 +157,23 @@ def _norm(formula: str) -> str:
 
 
 def build_ir(xlsx: str | Path, db_path: str | Path, table_scorer: str = "hand", verify: bool = True,
-             user_tables: dict[str, list[dict]] | None = None) -> BuildResult:
+             user_tables: dict[str, list[dict]] | None = None, ignored: list[dict] | None = None) -> BuildResult:
     """Parse `xlsx` into a SheetIR database. `table_scorer` picks how header rows are recognized:
     "hand" (hand-set weights) or "model" (classifiers trained on StatSheets). With `verify`, the database is then
     checked against the workbook re-read independently (sheetir.verify), and the report stored in its meta table.
     `user_tables` (sheet -> table specs) replaces table detection on those sheets with the user's tables.
+    `ignored` ({"cell", "kind", "detail", "note"?, "at"?} each) lists issues the user marked as intended: an issue
+    matching one on all three of cell, kind and detail goes to the ignored_issues table instead of issues. Formulas
+    SheetIR cannot follow (sheetir.verify.NOT_UNDERSTOOD) are never ignored, so the check's coverage stays honest.
     `xlsx` may also be a .csv, .xls or .ods file: it is converted to an .xlsx first (sheetir.convert), and both the
     parse and the check read that conversion."""
     with tempfile.TemporaryDirectory() as tmp:
         book, notes = as_xlsx(Path(xlsx), Path(tmp))
-        return _build(Path(xlsx), book, notes, db_path, table_scorer, verify, user_tables)
+        return _build(Path(xlsx), book, notes, db_path, table_scorer, verify, user_tables, ignored or [])
 
 
 def _build(src: Path, book: Path, notes: list[str], db_path: str | Path, table_scorer: str, verify: bool,
-           user_tables: dict[str, list[dict]] | None) -> BuildResult:
+           user_tables: dict[str, list[dict]] | None, ignored: list[dict]) -> BuildResult:
     raw = load(book)
     if book != src:
         raw.path, raw.sha256 = src, hashlib.sha256(src.read_bytes()).hexdigest()
@@ -346,6 +350,14 @@ def _build(src: Path, book: Path, notes: list[str], db_path: str | Path, table_s
         if role == "orphan":
             issue("orphan", f"constant {cells[ck].value!r} is not used by any formula", ck)
 
+    waived = {(i["cell"], i["kind"], i["detail"]): i for i in ignored if i["kind"] not in NOT_UNDERSTOOD}
+    ignored_rows = []
+    for row in list(issues):
+        w = waived.get((row[1], row[3], row[5]))
+        if w is not None:
+            issues.remove(row)
+            ignored_rows.append((row[1], row[2], row[3], row[4], row[5], w.get("note"), w.get("at")))
+
     # ---- self-checks -----------------------------------------------------------
     checks: list[tuple[str, bool, str, str]] = []
     missing = [ck for ck in parsed if ck not in group_of]
@@ -411,6 +423,7 @@ def _build(src: Path, book: Path, notes: list[str], db_path: str | Path, table_s
         "relations": relation_rows,
         "names": [(n.name, n.scope, n.refers_to) for n in raw.names],
         "issues": issues,
+        "ignored_issues": ignored_rows,
         "checks": [(n, int(p), s, d) for n, p, s, d in checks],
     }
     store.write(db_path, rows)
