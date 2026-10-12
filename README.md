@@ -43,6 +43,7 @@ Given an `.xlsx` workbook, SheetIR produces:
 | **Parameters** named from nearby labels, with units and allowed range | `copper_price` (TWD/kg, 100–1000), `labor_rate` (from defined name `LaborRate`) |
 | A **semantic address** for every cell | `Quote!J13` → `quote["Cover plate"].margin` |
 | The **dependency graph** | Trace any number back to its inputs |
+| **Relations** read from lookups and conditional aggregates | `quote.material` → `materials.code`, returning `price_factor` (exact `VLOOKUP`, 20 cells) |
 | **Issues** found during parsing | Inconsistent formula in a column, constant typed over a formula, hard-coded `1.15`, unused values, `TODAY()`, `INDIRECT` |
 | **Self-check** results | Formula coverage, independent re-derivation of groups, cycle detection |
 
@@ -148,9 +149,12 @@ npm run build                        # include the new screenshots
 |---|---|
 | **新增資料** button | Upload dialog: drag and drop an `.xlsx`/`.xlsm`, or load the sample workbook |
 | **轉換檔案** button | Files derived from the workbook (original, `ir.db`, `model.json`, CSVs), with preview and download |
+| **工作表結構** button | Sheet structure: a spreadsheet-like grid of each sheet. *Structure* tints every detected table (header rows, body, total row, key column) and outlines it, and marks parameters and outputs outside tables; *Roles* colors cells as input, computed, output or unused. Issue cells are outlined, *Show formulas* shows formulas instead of values, and the tables on the sheet are listed above the grid. Clicking a table shows its header, body, key and fields; clicking a cell shows where it sits (*table quote → row "Cover plate" → field margin*), its formula and R1C1 pattern, its calculation group, its issues (explained), its sources and users, with links to the dependency graph and the chat. A banner offers **Re-parse** when the result was built with an older IR schema |
+| **SQL 查詢** button | SQL against the workbook's SheetIR database, with example queries and the tables and columns of the schema (click to insert). Only `SELECT`/`WITH` is accepted and the database is opened read-only; up to 500 rows, downloadable as CSV. Cell ids in the result open the cell in the sheet structure view |
 | **依賴圖** button | Dependency graph. *Overview*: one node per formula group, table data column or standalone input, so a filled-down column is a single node. *Cell trace*: a cell's precedents (3 levels up) and dependents (2 levels down). Hovering a node highlights its whole calculation chain; nodes with issues get a badge |
 | **圖表** button | Charts. Structure and audit: cell roles and issue severity (donuts), issue kinds, cells and formulas per sheet. Table data: pick a detected table and a numeric column, shown per row (bars) or summed by a text column (donut or bars), with a data-table view. Formula columns only have values if the file was last saved by Excel |
-| Workbook list | Each workbook keeps its own chat history (stored in the browser) |
+| Workbook list | One row per file name. Results of the same file name with different content are its versions (`v2/3`); the arrow lists them with upload date and result id, and each can be removed. Each result keeps its own chat history (stored in the browser) |
+| **轉換檔案** → *Source file* | Where the result came from: file name (and other names the same bytes were uploaded under), version, SHA-256, size, the file's modified time on your machine, first and last upload, and the SheetIR version, IR schema and header scorer that parsed it. *Compare with another version* lists the cells added, removed or changed (value or formula), or says the cell contents are identical |
 | Chat | Answers about the summary, issues, parameters, tables, outputs, checks, or a cell such as `Quote!J13`. Cell ids in a reply are clickable, and replies about a cell link to its dependency graph |
 
 The chat is rule-based for now (`sheetir/web/chat.py`). The LLM Q&A stage will replace `answer()` there.
@@ -163,23 +167,38 @@ and English, including chat replies (`lang` in the chat request). UI strings liv
 
 | Tab | Contents |
 |---|---|
-| **Sheets** | Spreadsheet-like grid colored by cell role, with issue cells outlined. Clicking a cell shows its formula, R1C1 form, semantic name, issues, precedents and dependents. Cells in the same formula group are marked, and direct precedents get a dashed outline. Every reference is clickable, including references to other sheets. |
-| **Issues** | All issues, filterable by severity; click to jump to the cell |
-| **Model** | The semantic view: parameters (value, unit, domain), tables and their fields with R1C1 formulas, outputs, formula groups |
+| **Overview** | What was found, in plain sentences; key counts (tables, parameters, results, calculations, lookups, issues); each parsing step with its numbers and self-checks; a minimap of every sheet showing its tables, inputs, results and issues; the issues that need attention, explained; how to query the result |
+| **Sheets** | Spreadsheet-like grid in two modes. *Structure* tints each detected table (header rows, body, total row, key column) and outlines it, and marks parameters and results outside tables; *Roles* colors cells as input, derived, result or unused. Issue cells are outlined, a *formulas* switch shows formulas instead of values, and the tables on the sheet are listed above the grid. Clicking a table shows its header, body, key and fields; clicking a cell shows where it sits (*table quote → row "Cover plate" → field margin*), its formula and pattern, its calculation group, its issues (explained), and its precedents and dependents. Every reference is clickable, including other sheets |
+| **Tables & names** | Tables with their fields (*Show on sheet*), parameters (value, unit, allowed values), results outside tables, lookups between tables, and calculation groups |
+| **Issues** | All issues with a plain-language explanation, filterable by severity; click to jump to the cell |
 | **SQL** | Ad-hoc SQL against the IR, with preset queries. Only `SELECT`/`WITH` is accepted, and the database is opened read-only |
+
+The header also offers **Download .db** (the SheetIR database, for any SQLite tool) and **Re-parse** (parse the
+stored copy again after upgrading SheetIR; a banner suggests it when a database was built with an older IR schema).
+The address bar keeps the current view (`#wb=…&view=sheet&sheet=Quote&cell=Quote!J13`), so links and reloads land on
+the same cell. Loading the sample again reuses the same entry; the ✕ beside a workbook removes the stored copy and
+its database (never the original file).
 
 ### HTTP API
 
 | Method | Path | Returns |
 |---|---|---|
-| `GET` | `/api/workbooks` | Parsed workbooks, newest first |
-| `POST` | `/api/workbooks` | Upload (`multipart/form-data`, field `file`) and parse |
+| `GET` | `/api/workbooks` | Every result with its source record (name, aliases, SHA-256, size, file modified, first/last upload, upload count), how it was parsed, and its version among results of the same file name; most recently uploaded first |
+| `POST` | `/api/workbooks` | Upload (`multipart/form-data`: `file`, optional `last_modified` in ms) and parse. Returns `duplicate: true` when the same bytes were uploaded before (the result is reused, re-parsed only if its IR schema is outdated) |
+| `GET` | `/api/workbooks/{id}/user-tables` | The user's table corrections, per sheet |
+| `PUT` | `/api/workbooks/{id}/user-tables/{sheet}` | `{"tables": [{"range", "header_rows", "total", "name"?}]}`: use these tables on the sheet, re-parse and verify. Refused with `bad_range`, `too_small` or `overlap` |
+| `DELETE` | `/api/workbooks/{id}/user-tables/{sheet}` | Back to automatic detection on the sheet, re-parse |
+| `GET` | `/api/workbooks/{id}/diff?against=` | Cells added, removed or changed from another result (e.g. the previous version) to this one |
 | `POST` | `/api/workbooks/sample` | Generate and parse the sample workbook |
-| `GET` | `/api/workbooks/{id}/summary` | Metadata, counts, checks, issue counts |
-| `GET` | `/api/workbooks/{id}/sheet?name=` | Cells and issues of one sheet |
+| `GET` | `/api/workbooks/{id}/summary` | Metadata, counts, per-sheet stats, checks, issue counts, whether the IR schema is outdated |
+| `GET` | `/api/workbooks/{id}/sheet?name=` | Cells, issues, tables (with fields) and parameters of one sheet |
+| `GET` | `/api/workbooks/{id}/layout` | Compact per-sheet maps (cell role, table, issue severity) for the minimaps |
+| `GET` | `/api/workbooks/{id}/db` | The SheetIR database file |
+| `POST` | `/api/workbooks/{id}/rebuild` | Parse the stored copy again with the current SheetIR |
+| `DELETE` | `/api/workbooks/{id}` | Remove the stored copy and its database |
 | `GET` | `/api/workbooks/{id}/cell?id=&depth=` | One cell with its group, issues, precedents and dependents |
 | `GET` | `/api/workbooks/{id}/issues` | All issues |
-| `GET` | `/api/workbooks/{id}/model` | Tables, fields, parameters, outputs, groups |
+| `GET` | `/api/workbooks/{id}/model` | Tables, fields, parameters, outputs, groups, relations |
 | `POST` | `/api/workbooks/{id}/sql` | `{"query": "..."}` → columns and rows (max 500) |
 | `POST` | `/api/workbooks/{id}/chat` | `{"message": "...", "lang": "zh" \| "en"}` → `{"reply": markdown, "cells": [...]}` |
 | `GET` | `/api/workbooks/{id}/graph?cell=&up=&down=` | Block-level dependency graph; with `cell`, that cell's neighbourhood |
@@ -194,7 +213,7 @@ and English, including chat replies (`lang` in the chat request). UI strings liv
 | Command | Description |
 |---|---|
 | `sheetir sample [OUT]` | Write the sample workbook (default `samples/quotation.xlsx`) |
-| `sheetir build XLSX [-o DB]` | Parse a workbook; prints counts, checks and issues. Exits with code 1 if an error-level check fails |
+| `sheetir build XLSX [-o DB] [--tables hand\|model]` | Parse a workbook; prints counts, checks and issues. `--tables model` recognizes header rows with the trained classifiers. Exits with code 1 if an error-level check fails |
 | `sheetir trace DB CELL [--depth N]` | Print the precedent tree of a cell, e.g. `Quote!J13` |
 | `sheetir sql DB QUERY` | Run SQL against an IR database |
 | `sheetir serve [--host] [--port] [--data]` | Start the web UI |
@@ -226,7 +245,7 @@ The IR has four layers. Each layer is derived from the one below it:
 |---|---|---|
 | **L0 Raw** | Cells, constants, formulas, cached values, number formats, Excel Tables, defined names, data validation | `loader.py` |
 | **L1 Formula** | Tokens, resolved references (A1, cross-sheet, defined names, `Table[Column]`), R1C1 templates, literals, dependency edges | `formula.py`, `refs.py` |
-| **L2 Structure** | Formula groups, tables (header, key column, total row, fields), cell roles, anomalies | `groups.py`, `structure.py` |
+| **L2 Structure** | Formula groups, tables (header, key column, total row, fields), cell roles, anomalies, relations | `groups.py`, `structure.py`, `relations.py` |
 | **L3 Semantic** | Names for parameters, fields and outputs; semantic address of every cell | `build.py` (slugs from labels; LLM renaming is a later stage) |
 
 ---
@@ -261,7 +280,24 @@ Adjacent cells with identical R1C1 keys are grouped: first down columns (`axis =
 
 ### 4. Detect tables and roles (L2)
 
-- **Tables**: declared Excel Tables are used first. Otherwise a table is detected from a row of two or more adjacent text cells (the header) above at least two rows containing numbers or formulas. Header cells that a formula references individually are treated as input values, not headers. A trailing row with a "Total" label, or an aggregate over the column above, becomes the **total row**. The first all-text, unique column becomes the **key column**.
+- **Tables**: declared Excel Tables are used first. Otherwise, a run of two or more adjacent header-like cells is **scored** as a possible header (`HandScorer` in `tablemodel.py`, threshold 0.7), and needs at least two body rows below it. Header-like cells are text, dates, runs of consecutive years (`2023 | 2024 | 2025`), and numbers or formulas formatted as headers (bold, fill or bottom border). Evidence adds up:
+
+  | Signal | Weight |
+  |---|---|
+  | Share of cells that read as labels (text, date, year run, or formatted unlike the cell below) | 0.40 |
+  | Some column switches from a label to a value below the header | 0.30 |
+  | ... scaled by the share of columns that do | 0.15 |
+  | Share of cells formatted unlike the cell below | 0.30 |
+  | Share of columns where a filled-down formula group starts right below | 0.30 |
+  | Header labels are distinct | 0.10 |
+
+  Plain text labels over numbers pass on their own. Formatting lets all-text tables and numeric headers pass, and formula columns raise the score. The score is stored as the table's `confidence`. Header cells that a formula references individually are treated as input values, not headers.
+
+  `sheetir build --tables model` (or `build_ir(..., table_scorer="model")`) uses classifiers trained on StatSheets instead, for both the header row and the header rows above it; the confidence is then the model's probability. They are more accurate on statistical tables (see [Table detection benchmark](#table-detection-benchmark)) but were trained without formulas, so they miss some business layouts the hand weights handle: styled all-text tables, formula columns as evidence, and a form field (`Customer | ACME`) directly above a header. The scorer used is recorded in `meta.table_scorer`.
+- **Header rows**: the header is compared with the first row below it that holds values, so a units row (`$m | $m`) or a section heading may sit in between. Up to ten rows directly above the header row are joined into field headers (`2024 / Q1`) when they hold two or more labels that are merged across columns, merged down, written once and left blank to their right, or fill most columns (series metadata such as unit and frequency). A single title, or a blank row, ends the header.
+- **Stub column**: a column to the left with an empty header cell over text labels (row names in statistical tables) joins the table, also across one empty spacer column.
+- **Side by side**: detected tables at most one column apart, with headers within one row of each other and nearly the same body rows, are one table split by spacer columns and are merged.
+- **Body**: the body runs down while rows have content. Up to three rows that are empty across the table's value columns (blank rows, or section headings in the stub column) are skipped when the row after them continues the same label/value pattern per column; they are recorded as gaps (not rows with missing formulas). A new header after them, or four such rows, ends the table. A trailing row with a "Total" label, or an aggregate over the column above, becomes the **total row**, also after a blank row. The first all-text, unique column becomes the **key column**.
 - **Fields**: a column whose cells are mostly formulas is `derived`, and its majority R1C1 key is the column's pattern. Cells that break the pattern are reported as issues.
 - **Roles** come from the dependency graph:
 
@@ -273,7 +309,30 @@ Adjacent cells with identical R1C1 keys are grouped: first down columns (`axis =
 | `label` | Text that nothing references |
 | `orphan` | Non-text constant that nothing references |
 
-### 5. Name things (L3)
+### 5. Read relations from formulas (L2)
+
+Table boundaries and names are guesses; a lookup formula is a fact. `=VLOOKUP(B2, Materials!$A$2:$C$4, 3, FALSE)`
+says that `B2` is matched against `Materials!A2:A4` and that the answer comes from `Materials!C2:C4`. The formula
+parser records every function call with its arguments (nested calls included), and `relations.py` turns the
+following calls into relations:
+
+| Function | Value | Matched against | Returns | Match mode |
+|---|---|---|---|---|
+| `VLOOKUP` / `HLOOKUP` | 1st argument | First column / row of the table | Column / row given by the index | `exact` only with `FALSE`/`0`; omitted means `approximate` |
+| `XLOOKUP` | 1st | 2nd | 3rd | `exact` by default; `approximate` (`-1`/`1`), `wildcard` (`2`) |
+| `INDEX(…, MATCH(…))` | `MATCH` 1st | `MATCH` 2nd | `INDEX` array (or its column) | From `MATCH`; recorded once as `INDEX/MATCH` |
+| `MATCH` / `XMATCH` alone, `LOOKUP` | 1st | 2nd | `LOOKUP` 3rd, otherwise none | `MATCH` defaults to `approximate`, `XMATCH` to `exact` |
+| `SUMIF(S)`, `COUNTIF(S)`, `AVERAGEIF(S)`, `MAXIFS`, `MINIFS` | Criterion | Criteria range (one relation per pair) | Aggregated range | `equal` when the criterion is a plain cell, else `condition` |
+
+Each relation is then placed on the detected tables. The table holding the lookup value is the **from** side, and the
+table holding the key range is the **to** side, with field names where a range is exactly one column. This is the
+equivalent of a foreign key. A range computed at run time (`INDIRECT`, `OFFSET`) is recorded with no key range.
+
+An approximate lookup over a mostly-text key range is reported as `approximate_lookup`, because it silently returns
+wrong rows unless the keys are sorted. Approximate lookups over numbers (bracket tables) are legitimate and are not
+reported.
+
+### 6. Name things (L3)
 
 - **Parameters**: inputs outside tables. Each is named from the label to its left (or above) or from a defined name, and labels like `Copper price (TWD/kg)` are split into a name (`copper_price`) and a unit (`TWD/kg`). Data validation rules become the parameter's domain. A two-column *label | value* block whose values are referenced one by one is treated as a parameter list.
 - **Table cells**: `table["row key"].field`, and `table.total.field` for total rows.
@@ -285,12 +344,29 @@ Names are deterministic slugs. A later stage will let an LLM propose better name
 
 ## Storage format
 
+### Which file produced which result
+
+The web server keeps each result in `data/<id>/`, where `<id>` is the first 12 hex digits of the SHA-256 of the
+uploaded bytes. The same file content therefore always maps to the same result, and uploading it again opens that
+result instead of adding another. Each folder holds:
+
+| File | Contents |
+|---|---|
+| `<name>.xlsx` | Copy of the upload, named as at the first upload (the user's file is never touched) |
+| `ir.db` | The SheetIR database; `meta` records the source SHA-256, SheetIR version, IR schema, header scorer and build time |
+| `source.json` | Provenance: `name`, `aliases` (other names the same bytes were uploaded under), `sha256`, `size`, `file_modified` (the file's modified time on the uploader's machine, sent by the browser), `first_uploaded`, `last_uploaded`, `uploads` |
+
+Results with the same file name (case-insensitive) are versions of one workbook, numbered by first upload. Downloaded
+files carry the result id in their name (`quotation.0e2581ad6369.sheetir.db`), so a database on disk still says which
+upload it came from; its `meta.sha256` gives the full hash of the source file. Results stored before `source.json`
+existed get a record rebuilt from `ir.db` (with the build time as upload time and no file-modified time).
+
 ### Location
 
 | Used from | Location |
 |---|---|
 | CLI | Path given with `-o`, default `<workbook>.sheetir.db` next to the workbook |
-| Web UI | `data/<id>/ir.db`, plus a copy of the uploaded file in `data/<id>/`; `<id>` is the first 12 hex characters of the file's SHA-256 |
+| Web UI | `data/<id>/ir.db`, plus a copy of the uploaded file and `source.json` in `data/<id>/`; `<id>` is the first 12 hex characters of the file's SHA-256 (see above) |
 
 Each build **replaces** the previous database at that path; version history is not kept yet. `data/`, `out/` and `*.sheetir.db` are git-ignored.
 
@@ -307,14 +383,17 @@ One SQLite file per workbook. Every table is keyed by a canonical cell id such a
 | `ranges` | Distinct multi-cell range | `range_id` (e.g. `Quote!J2:J21`), bounds |
 | `range_cells` | Non-empty cell inside a range | `range_id`, `cell_id` |
 | `literals` | Numeric literal in a formula | `cell_id`, `value`, `function` (enclosing call) |
-| `tables` | Detected or declared table | `name`, `kind` (`data`/`parameter_list`), `source` (`detected`/`listobject`), header/data/total rows, `key_col` |
+| `tables` | Detected or declared table | `name`, `kind` (`data`/`parameter_list`), `source` (`detected`/`listobject`), header/data/total rows, `header_top` (first group-header row), `key_col`, `confidence` |
 | `fields` | Table column | `name`, `header`, `unit`, `kind` (`data`/`derived`), `r1c1` (column pattern) |
 | `params` | Parameter | `cell_id`, `label`, `name`, `unit`, `domain` (JSON) |
+| `relations` | Lookup or aggregate criterion in a formula | `cell_id`, `group_id`, `function`, `kind` (`lookup`/`aggregate`), `match`, `value`, `value_cell`, `key_range`, `return_range`, `from_table`, `from_field`, `to_table`, `key_field`, `return_field` |
 | `names` | Defined name | `name`, `scope`, `refers_to` |
 | `issues` | Finding | `cell_id`, `group_id`, `kind`, `severity`, `detail` |
 | `checks` | Self-check | `name`, `passed`, `severity`, `detail` |
 
 View **`deps(src_cell, dst_cell, via)`** combines cell edges and range edges into cell-level dependencies, with ranges expanded through `range_cells`. Tracing uses a recursive CTE over this view (`store.TRACE_SQL`).
+
+View **`table_links`** groups `relations` that land in a detected table into table-level links: `from_table.from_field` → `to_table.key_field`, returning `return_field`, with the function, match mode and number of cells.
 
 Note: `value`, `cached`, `template` and `domain` are stored as JSON text, so dates come back as strings. Use `json_extract` or casts when filtering numerically.
 
@@ -334,6 +413,7 @@ Note: `value`, `cached`, `template` and `domain` are stored as JSON text, so dat
 | `cycle` | high | Cell is part of a circular reference |
 | `missing_formula` | medium | Empty cell inside a derived column |
 | `hardcoded_constant` | medium | Business constant inside a formula; one issue per group |
+| `approximate_lookup` | medium | `VLOOKUP`/`MATCH`/… without exact match over text keys; one issue per group |
 | `dynamic_ref` | medium | `INDIRECT` / `OFFSET`: dependencies cannot be known statically |
 | `volatile` | medium | `NOW`, `TODAY`, `RAND`, … |
 | `unresolved_ref` / `unresolved_name` | medium | Structured reference or name that could not be resolved |
@@ -379,6 +459,14 @@ SELECT p.name, COUNT(DISTINCT d.dst_cell) AS direct_dependents
 FROM params p JOIN deps d ON d.src_cell = p.cell_id
 GROUP BY p.name ORDER BY direct_dependents DESC;
 
+-- How tables join: foreign-key-like links read from lookup formulas
+SELECT from_table, from_field, to_table, key_field, return_field, function, match, n_cells
+FROM table_links ORDER BY n_cells DESC;
+
+-- Columns used as lookup keys, with how many formulas depend on them
+SELECT key_range, COUNT(*) AS lookups, GROUP_CONCAT(DISTINCT function) AS functions
+FROM relations WHERE kind = 'lookup' GROUP BY key_range ORDER BY lookups DESC;
+
 -- The semantic model of a table
 SELECT f.name, f.kind, f.unit, f.r1c1
 FROM fields f JOIN tables t USING(table_id) WHERE t.name = 'quote' ORDER BY f.col;
@@ -391,12 +479,18 @@ FROM fields f JOIN tables t USING(table_id) WHERE t.name = 'quote' ORDER BY f.co
 ```
 SheetTwin/
 ├── pyproject.toml
+├── bench/
+│   ├── eval_statsheets.py     table detection scored against the StatSheets benchmark
+│   └── train_table_model.py   train the header classifiers, with cross-validation
 ├── sheetir/
 │   ├── refs.py        A1 parsing, R1C1 relativization, cell ids
 │   ├── loader.py      L0: read formulas, cached values, tables, names, validation
-│   ├── formula.py     L1: tokenize, resolve references, R1C1 templates, literals
+│   ├── formula.py     L1: tokenize, resolve references, R1C1 templates, literals, calls
 │   ├── groups.py      L2: group identical R1C1 formulas
 │   ├── structure.py   L2/L3: tables, fields, roles, anomalies, labels
+│   ├── tablemodel.py  header features, hand-weighted and learned scorers (trees evaluated in plain Python)
+│   ├── models/        trained header classifiers (JSON), used with --tables model
+│   ├── relations.py   L2: relations from lookups and conditional aggregates
 │   ├── build.py       pipeline, name resolver, issues, self-checks
 │   ├── store.py       SQLite schema, writer, trace query
 │   ├── sample.py      synthetic quotation workbook with planted errors
@@ -413,7 +507,10 @@ SheetTwin/
 └── tests/
     ├── test_refs.py   reference parsing and R1C1 round trips
     ├── test_build.py  end-to-end build on the sample, Excel Tables, cycles
-    └── test_web.py    chat answers, dependency graphs, chart data
+    ├── test_tables.py  table layouts: year/styled headers, multi-row headers, stub columns, sections, titles
+    ├── test_relations.py  lookups, INDEX/MATCH, XLOOKUP, SUMIFS, match modes, table links
+    ├── test_tablemodel.py  tree-model evaluator, scorer selection
+    └── test_web.py  web API (summary, sheet, layout, download, re-parse, delete), chat answers, dependency graphs, chart data
 ```
 
 ---
@@ -424,9 +521,104 @@ SheetTwin/
 uv run pytest
 ```
 
-34 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection, semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, chat answers, dependency graphs and chart data. The HTTP layer and the chat UI are not covered by automated tests yet.
+94 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL), provenance (duplicate uploads, aliases, versions, diffs, download names), the independent parse check and its tamper control, unreadable files (old .xls, password, not a workbook, damaged package, broken formatting) and failed uploads, user table corrections (applied on re-parse, validated, reset), chat answers, dependency graphs and chart data. The chat UI itself is not covered by automated tests yet.
 
 ---
+
+### Parse status
+
+Every build ends with an independent check (`sheetir/verify.py`, which imports nothing else from SheetIR): the
+workbook is re-read with plain openpyxl and compared with the database. The report and a status are stored in `meta`
+(`parse_status`, `verification`) and shown by `sheetir build`, in the web UI's status badge and *Verification report*:
+
+| Status | Meaning |
+|---|---|
+| `verified` | Contents, rebuild, references and formula groups all match, and every formula can be traced |
+| `partial` | All checks match, but some formulas cannot be traced fully (`INDIRECT`/`OFFSET`, links to other workbooks, unresolved names, `#REF!`) |
+| `check_failed` | A check found a difference: the result may be wrong |
+| `unverified` | Not checked: built by an older SheetIR, or the check itself could not run |
+| `failed` | The file could not be parsed (web UI only; the upload is kept with `error.json`) |
+
+The report also lists the parts of the file SheetIR does not model (macros, pivot tables, charts, external links,
+comments, images, slicers), read from the package's part names.
+
+Files that cannot be read raise `WorkbookError` with a `kind`: `legacy_xls` (Excel 97-2003 renamed .xlsx),
+`encrypted` (password protected), `not_a_workbook`, `corrupt`. A workbook whose formatting part is unreadable is read
+again without it (warning `styles_dropped` in `meta.load_warnings`): cells and formulas are kept. In the web UI a
+failed upload stays in the list with the reason, what to do, its technical details and *Re-parse* / *Remove*;
+uploading a `.csv`, `.xls` or other type is refused with a message naming the type. Any other error while parsing is
+recorded as `parse_failed` with the original kept, so it can be re-parsed once SheetIR is fixed.
+
+### Fixing tables
+
+Table detection is a guess, so the user can correct it. In the web UI's sheet structure view, **Fix tables** turns the
+grid into an editor: drag across cells to select a range, add it as a table, set its header row count and whether its
+last row is a total, rename or remove tables, and save. Saving re-parses and re-verifies the workbook; that sheet then
+uses exactly the user's tables (`source = "user"`, shown as *Edited*) on every later parse, while other sheets keep
+automatic detection. *Back to automatic detection* drops the correction.
+
+Corrections are stored per result in `data/<id>/overrides.json` (`{"sheets": {"Sheet": [{"range": "A5:M40",
+"header_rows": 1, "total": false, "name": "…"}]}}`) and recorded in `meta.user_tables`. The API validates them (a real
+range, at least one body row, no overlaps). From Python, pass the same structure to `build_ir(..., user_tables=...)`.
+
+### Parse verification
+
+`bench/verify_parse.py` checks a SheetIR database against its workbook re-read with plain openpyxl, using none of
+SheetIR's parsing code: every non-empty cell is present with the same value or formula (and nothing extra); a workbook
+rebuilt from the IR alone has the same cells; the cells each formula reads, found with openpyxl's tokenizer (defined
+names and structured references resolved by the checker itself), are its precedents in the IR; translating each
+group's anchor formula to every member reproduces the member's formula; planted problems are reported; detected tables
+match hand-labeled ranges. A `tamper` run damages the IR first (a value, a cell, a formula, a dependency) and must
+fail. `tests/test_verify.py` runs both on the sample.
+
+```bash
+uv run python bench/verify_parse.py spec.json -o report.json
+```
+
+### Table detection benchmark
+
+`bench/eval_statsheets.py` scores table detection against [StatSheets](https://doi.org/10.5281/zenodo.21967189)
+(737 sheets from 14 statistical agencies, table ranges labeled by hand). SheetIR reads only `.xlsx`, so 263 sheets
+with 300 labeled tables are used. Download and unzip the dataset, then:
+
+```bash
+uv run --with numpy python bench/eval_statsheets.py <path-to>/dataset --jobs 6
+```
+
+Predicted ranges (header through total row) are matched one-to-one to labeled ranges by IoU. `--scorer hand|model`
+picks the header scorer. Results at the time of writing, on all 263 sheets:
+
+| Detector | P (IoU ≥ 0.8) | R (IoU ≥ 0.8) | F1 (IoU ≥ 0.8) | F1 (exact range) |
+|---|---|---|---|---|
+| Rule: text header over numbers (v0.1) | 43.6% | 39.7% | 41.5% | 21.3% |
+| Hand-scored header, stub/spacer columns, sections, header blocks | 49.6% | 76.0% | 60.0% | 45.8% |
+
+The hand weights and rules were tuned on these same sheets, so that row is optimistic. One OECD codebook sheet,
+labeled as a single table, is detected as 118 blocks and accounts for most surplus predictions.
+
+**Learned scorer.** `bench/train_table_model.py` trains two LightGBM classifiers on the features in
+`sheetir/tablemodel.py`: is a candidate run a header row, and is a row above a header row part of that header.
+Labels come from StatSheets' per-cell annotations, mapped back from its compressed grid (the mapping is checked
+against the paired compressed/original table ranges; 2 sheets fail the check and 4 files do not open, leaving 257).
+A row counts as a header row when it lies in an annotated table above the table's first `DATA` row and its cells
+are mostly `HEADER`. Five-fold cross-validation, split by file; both scorers run on the same held-out sheets:
+
+```bash
+uv run --with numpy --with lightgbm python bench/train_table_model.py <path-to>/dataset --jobs 6 [--export sheetir/models]
+```
+
+| Scorer (257 sheets, 294 tables, held out) | P (IoU ≥ 0.8) | R (IoU ≥ 0.8) | F1 (IoU ≥ 0.8) | P / R / F1 (exact range) |
+|---|---|---|---|---|
+| Hand weights | 66.6% | 77.2% | 71.5% | 50.7% / 58.8% / 54.5% |
+| Learned (LightGBM) | 81.5% | 74.8% | 78.0% | 64.1% / 58.8% / 61.3% |
+
+The learned scorer mostly removes false tables (surplus predictions drop from 58 to 11) at a small cost in recall
+(18 sheets with no table found, against 6). The hand row is still not held out for its rules. `--export` trains
+the final models on all 257 sheets; the exported trees match LightGBM's probabilities to within 1e-7.
+
+For reference, the StatSheets paper reports exact-range precision of 76.8% (micro) for its trained LightGBM+CRF
+pipeline on all 737 sheets with 5-fold cross-validation. That is not directly comparable: different sheets
+(all formats, while SheetIR reads `.xlsx` only) and different folds.
 
 ## Status and roadmap
 
@@ -447,8 +639,9 @@ Next steps, in order:
 
 ### Known limitations
 
-- Table detection supports single-row headers only, and transposed tables are not detected as tables (their formulas still group by row).
+- Table detection uses hand-set weights by default. The learned scorer (`--tables model`) was trained only on statistical tables from public agencies, without formulas; it has not been evaluated on business workbooks. The table-extent rules (stub columns, gaps, side-by-side merging) were tuned on StatSheets itself. Transposed tables (headers down the first column) are not detected as tables (their formulas still group by row), and two tables side by side with no blank column between them are read as one.
 - `INDIRECT`/`OFFSET` dependencies are flagged but not resolved.
+- Relations are read only from the functions listed above. Joins written as `SUMPRODUCT((A=B)*…)`, `FILTER` or array arithmetic are not recognized, nor is the array form of `LOOKUP`. Relations do not yet feed back into table detection (for example to choose the key column).
 - 3D references (`Sheet1:Sheet3!A1`) are reported as unresolved names.
 - Defined names that hold constants or formulas, rather than ranges, are not resolved.
 - The grid view shows at most 400 rows × 52 columns per sheet.

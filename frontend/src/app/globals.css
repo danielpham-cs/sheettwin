@@ -90,3 +90,40 @@ body {
 .md th { text-align: left; font-weight: 500; color: #a1a6b8; background: rgb(255 255 255 / 0.04); padding: 8px 12px; white-space: nowrap; }
 .md td { padding: 7px 12px; border-top: 1px solid rgb(255 255 255 / 0.06); vertical-align: top; }
 .md tr:hover td { background: rgb(255 255 255 / 0.025); }
+
+/* Sheet grid (StructureView). --tc is the color of the table a cell belongs to. */
+.sgrid table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.sgrid th { position: sticky; top: 0; z-index: 2; background: #1b1b22; color: #8b8f9e; font-weight: 500; padding: 3px 8px; border-right: 1px solid rgb(255 255 255 / 0.05); border-bottom: 1px solid rgb(255 255 255 / 0.08); }
+.sgrid th.rh { left: 0; z-index: 1; text-align: right; }
+.sgrid thead th:first-child { left: 0; z-index: 3; }
+.sgrid td { position: relative; max-width: 220px; min-width: 56px; padding: 3px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; color: #d6d8e1; border-right: 1px solid rgb(255 255 255 / 0.04); border-bottom: 1px solid rgb(255 255 255 / 0.04); }
+.sgrid td[data-id] { cursor: pointer; }
+.sgrid td[data-id]:hover { filter: brightness(1.25); }
+.sgrid td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.sgrid td.f { font-family: var(--font-mono); font-size: 11.5px; color: #9aa0b4; }
+.sgrid td.s-hdr { background: color-mix(in srgb, var(--tc) 30%, #141419); color: #fff; font-weight: 600; }
+.sgrid td.s-body { background: color-mix(in srgb, var(--tc) 8%, #141419); }
+.sgrid td.s-tot { background: color-mix(in srgb, var(--tc) 19%, #141419); color: #fff; font-weight: 600; }
+.sgrid td.s-key { font-weight: 600; color: #fff; }
+.sgrid td.r-input { background: rgb(57 135 229 / 0.18); color: #a9cdf7; }
+.sgrid td.r-output { background: rgb(25 158 112 / 0.2); color: #8be3bf; font-weight: 600; }
+.sgrid td.r-label { color: #7d8191; }
+.sgrid td.r-orphan { background: rgb(255 255 255 / 0.03); color: #6b6f7d; text-decoration: line-through; }
+.sgrid td.grp { background-image: linear-gradient(#a78bfa, #a78bfa); background-size: 3px 100%; background-repeat: no-repeat; }
+.sgrid td.prec { outline: 2px dashed #67e8f9; outline-offset: -3px; }
+.sgrid td.sel { outline: 2px solid #c4b5fd; outline-offset: -2px; }
+.sgrid-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgb(255 255 255 / 0.12); }
+.sgrid-legend i.s-hdr { background: color-mix(in srgb, var(--tc) 70%, #141419); }
+.sgrid-legend i.s-body { background: color-mix(in srgb, var(--tc) 22%, #141419); }
+.sgrid-legend i.s-tot { background: color-mix(in srgb, var(--tc) 45%, #141419); }
+.sgrid-legend i.r-input { background: rgb(57 135 229 / 0.45); }
+.sgrid-legend i.r-output { background: rgb(25 158 112 / 0.5); }
+.sgrid-legend i.r-derived { background: #141419; }
+.sgrid-legend i.r-orphan { background: rgb(255 255 255 / 0.08); }
+.sgrid-legend i.iss { box-shadow: inset 0 0 0 2px #d03b3b; }
+.sgrid-legend i.grp { background: #a78bfa; }
+.sgrid-legend i.prec { border: 2px dashed #67e8f9; }
+
+/* Fixing tables: dragging selects a range */
+.sgrid.editing td { cursor: crosshair; user-select: none; }
+.sgrid td.insel { background-image: linear-gradient(rgb(167 139 250 / 0.32), rgb(167 139 250 / 0.32)); outline: 1px solid rgb(196 181 253 / 0.7); outline-offset: -1px; }

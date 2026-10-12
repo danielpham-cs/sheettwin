@@ -1,13 +1,15 @@
 "use client";
 
 import {
-  AlertTriangle, ArrowUp, Bot, ChartPie, Crosshair, FolderOutput, ListTree, Lock, MessageSquareText, Network, Settings2, Table2, User,
+  AlertTriangle, ArrowUp, Bot, ChartPie, Crosshair, Database, FolderOutput, Grid3x3, ListTree, Lock, MessageSquareText, Network, Settings2,
+  Table2, User,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Summary } from "@/lib/api";
+import { StatusBadge } from "@/components/ParseStatus";
 import { useI18n } from "@/lib/i18n";
 
 export type Message = { id: string; role: "user" | "assistant"; content: string; error?: boolean; cells?: string[] };
@@ -19,6 +21,8 @@ const SUGGESTION_ICONS = [ListTree, AlertTriangle, Settings2, Table2];
 // Same icons and order as the left rail, so the description doubles as a map of it.
 const FEATURES = [
   { key: "chat", icon: MessageSquareText, tint: "text-violet-300" },
+  { key: "sheets", icon: Grid3x3, tint: "text-amber-200" },
+  { key: "query", icon: Database, tint: "text-sky-300" },
   { key: "graph", icon: Network, tint: "text-cyan-300" },
   { key: "charts", icon: ChartPie, tint: "text-fuchsia-300" },
   { key: "exports", icon: FolderOutput, tint: "text-emerald-300" },
@@ -80,9 +84,10 @@ type Props = {
   onNewData: () => void;
   onShowGraph: (cell: string) => void;
   onNavigate: (to: Exclude<Destination, "chat">) => void;
+  onShowReport: () => void;
 };
 
-export function Chat({ summary, messages, pending, onSend, onNewData, onShowGraph, onNavigate }: Props) {
+export function Chat({ summary, messages, pending, onSend, onNewData, onShowGraph, onNavigate, onShowReport }: Props) {
   const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -118,6 +123,7 @@ export function Chat({ summary, messages, pending, onSend, onNewData, onShowGrap
               <h2 className="truncate font-medium">{summary.name}</h2>
               <p className="truncate text-xs text-zinc-500">{summary.sheets.join(" · ")}</p>
             </div>
+            <StatusBadge status={summary.status ?? "unverified"} onClick={onShowReport} />
             <div className="ml-auto hidden gap-2 lg:flex">
               {[
                 [t.chat.stats.formulas, summary.counts.formulas],

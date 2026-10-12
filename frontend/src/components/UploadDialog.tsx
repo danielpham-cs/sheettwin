@@ -3,10 +3,10 @@
 import { FlaskConical, Loader2, UploadCloud, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, ApiError, type IngestResult } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 
-type Props = { open: boolean; onClose: () => void; onDone: (id: string) => void };
+type Props = { open: boolean; onClose: () => void; onDone: (result: IngestResult) => void };
 
 export function UploadDialog({ open, onClose, onDone }: Props) {
   const { t } = useI18n();
@@ -22,15 +22,14 @@ export function UploadDialog({ open, onClose, onDone }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, busy, onClose]);
 
-  async function run(label: string, task: () => Promise<{ id: string }>) {
+  async function run(label: string, task: () => Promise<IngestResult>) {
     setBusy(label);
     setError(null);
     try {
-      const { id } = await task();
-      onDone(id);
+      onDone(await task());
       onClose();
     } catch (e) {
-      setError((e as Error).message);
+      setError(e instanceof ApiError && e.kind === "unsupported_type" ? t.failure.unsupported(String(e.info?.ext ?? "")) : (e as Error).message);
     } finally {
       setBusy(null);
     }

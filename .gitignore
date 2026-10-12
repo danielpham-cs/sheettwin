@@ -14,3 +14,6 @@ samples/
 # contest proposal material: kept local, not published
 SheetTwin_Proposal.md
 SheetTwin_SystemDesign_Slides.md
+
+# local secrets (API keys): never committed
+.env

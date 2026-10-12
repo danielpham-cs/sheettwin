@@ -142,7 +142,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
   const issueCount = data?.nodes.reduce((s, n) => s + (n.issues ? 1 : 0), 0) ?? 0;
 
   return (
-    <div className="relative flex h-full min-w-0 flex-1">
+    <div className="relative flex min-h-0 min-w-0 flex-1">
       <div className="relative min-w-0 flex-1">
         {/* Toolbar */}
         <div className="absolute left-4 right-4 top-4 z-10 flex flex-wrap items-center gap-3">

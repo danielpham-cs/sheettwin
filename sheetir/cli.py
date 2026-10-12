@@ -21,7 +21,7 @@ def _cmd_sample(args) -> int:
 def _cmd_build(args) -> int:
     xlsx = Path(args.xlsx)
     db = Path(args.out) if args.out else xlsx.with_suffix(".sheetir.db")
-    res = build_ir(xlsx, db)
+    res = build_ir(xlsx, db, args.tables)
     print(f"SheetIR -> {res.db_path}")
     print("  " + ", ".join(f"{k}={v}" for k, v in res.counts.items()))
     print("checks:")
@@ -31,7 +31,21 @@ def _cmd_build(args) -> int:
     print("issues:")
     for kind, n in sorted(res.issues_by_kind.items(), key=lambda kv: -kv[1]):
         print(f"  {kind:<30} {n}")
-    return 0 if all(p or s != "error" for _, p, s, _ in res.checks) else 1
+    v = res.verification
+    if v and v["status"] == "unverified":
+        print(f"verification: UNVERIFIED ({v['error']})")
+    elif v:
+        c, cov = v["checks"], v["coverage"]
+        print(f"verification: {v['status'].upper()} ({v['seconds']}s, workbook re-read independently)")
+        print(f"  content    {c['content']['matched']}/{c['content']['cells']} cells match")
+        print(f"  rebuild    {c['rebuild']['identical']}/{c['rebuild']['cells']} cells identical when rebuilt from the IR")
+        print(f"  references {c['references']['agree']}/{c['references']['checked']} formulas read the same cells"
+              + (f" ({c['references']['skipped']} not checkable)" if c['references']['skipped'] else ""))
+        print(f"  groups     {c['groups']['ok']}/{c['groups']['members']} members reproduce their group's formula")
+        print(f"  coverage   {cov['understood']}/{cov['formulas']} formulas fully understood"
+              + (f"; not modeled: {', '.join(f'{x['count']} {x['kind']}' for x in cov['ignored'])}" if cov['ignored'] else ""))
+    ok = all(p or s != "error" for _, p, s, _ in res.checks)
+    return 0 if ok and (not v or v["status"] != "check_failed") else 1
 
 
 def _cmd_trace(args) -> int:
@@ -85,6 +99,8 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.add_parser("build", help="parse a workbook into a SheetIR database")
     b.add_argument("xlsx")
     b.add_argument("-o", "--out")
+    b.add_argument("--tables", choices=["hand", "model"], default="hand",
+                   help="how header rows are recognized: hand-set weights (default) or the model trained on StatSheets")
     b.set_defaults(fn=_cmd_build)
 
     t = sub.add_parser("trace", help="show the precedent chain of a cell")
