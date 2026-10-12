@@ -430,11 +430,30 @@ class SqlRequest(BaseModel):
     query: str
 
 
-@app.post("/api/workbooks/{wid}/sql")
-def run_sql(wid: str, req: SqlRequest):
-    q = req.query.strip().rstrip(";")
+def _select_only(query: str) -> str:
+    q = query.strip().rstrip(";")
     if not re.match(r"^(select|with)\b", q, re.I):
         raise HTTPException(400, "only SELECT / WITH queries are allowed")
+    return q
+
+
+@app.post("/api/workbooks/{wid}/sql/check")
+def check_sql(wid: str, req: SqlRequest):
+    """Compile the query without running it (EXPLAIN), for the editor's as-you-type error marks."""
+    try:
+        q = _select_only(req.query)
+    except HTTPException as exc:
+        return {"error": exc.detail}
+    try:
+        _connect(wid).execute("EXPLAIN " + q).fetchone()
+    except sqlite3.Error as exc:
+        return {"error": str(exc)}
+    return {"error": None}
+
+
+@app.post("/api/workbooks/{wid}/sql")
+def run_sql(wid: str, req: SqlRequest):
+    q = _select_only(req.query)
     con = _connect(wid)  # opened read-only, so writes fail even if they slip through
     try:
         cur = con.execute(q)
