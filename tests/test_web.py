@@ -193,6 +193,25 @@ def test_chat_cell_reply_traces_precedents(con):
     assert "Quote!I13" in res["reply"]
 
 
+def test_chat_cell_reply_explains_in_plain_language(con):
+    reply = answer(con, "Quote!I13", "en")["reply"]
+    intro = reply.split("\n---\n")[0]  # the plain-language part, above the technical details
+    assert "is the **price** of **Cover plate** in table `quote`" in intro
+    assert "`Inputs!B6` parameter freight_per_unit = 120" in intro and "the number 1.12" in intro
+    # the column's own formula, written for this cell, instead of R1C1 patterns
+    assert "would have `=H13*1.15+Inputs!$B$6` here, but this cell has `=H13*1.12+Inputs!$B$6`" in intro
+    assert "RC[-1]" not in intro and "R1C1" in reply
+    assert "**Used by:** `Quote!I22` (total price), `Quote!J13` (margin of Cover plate)" in intro
+
+    zh = answer(con, "Quote!I13", "zh")["reply"].split("\n---\n")[0]
+    assert "是表格 `quote` 中 **Cover plate** 這一列的 **price**" in zh and "同欄其他列在這裡會是" in zh
+
+    param = answer(con, "Inputs!B3", "en")["reply"]
+    assert "input parameter **copper_price** (in TWD/kg)" in param and "20 cells in all" in param
+    today = answer(con, "Report!B1", "en")["reply"]
+    assert "**How it is calculated:** `=TODAY()`." in today and "from:" not in today.split("---")[0]
+
+
 def test_chat_issues_lists_planted_problems(con):
     reply = answer(con, "有哪些問題")["reply"]
     assert "Quote!I13" in reply and "inconsistent_formula" in reply
@@ -300,19 +319,24 @@ def test_unknown_sheet(client, wid):
 # ---- chat with a language model -------------------------------------------------------------------
 
 class _ScriptedLLM:
+    """Scripted replies for sheetir.understand.ask. The chat's routing step is answered with `route` (default:
+    structure, which sends the question to ask) without using a scripted reply."""
     model = "scripted"
 
-    def __init__(self, *replies):
-        self.replies = list(replies)
+    def __init__(self, *replies, route="structure"):
+        self.replies, self.route = list(replies), route
 
     def json(self, system, user, schema, name="answer"):
+        if name == "route":
+            return {"route": self.route}
         if not self.replies:
             raise LLMError("cannot reach the model")
         return self.replies.pop(0)
 
 
 def test_chat_without_a_model_uses_the_rules(client, wid):
-    assert client.get("/api/llm").json() == {"enabled": False, "model": None}
+    s = client.get("/api/llm").json()
+    assert s["enabled"] is False and s["model"] is None and s["reason"]
     r = client.post(f"/api/workbooks/{wid}/chat", json={"message": "有哪些問題？", "lang": "zh"}).json()
     assert r["source"] == "rules" and "Quote!I13" in r["reply"]
 
@@ -338,3 +362,54 @@ def test_chat_falls_back_to_the_rules_when_the_model_fails(client, wid, monkeypa
     monkeypatch.setattr(sheetir.web.app, "get_llm", lambda: _ScriptedLLM())
     r = client.post(f"/api/workbooks/{wid}/chat", json={"message": "What issues are there?", "lang": "en"}).json()
     assert r["source"] == "rules" and "cannot reach the model" in r["fallback"] and "Quote!I13" in r["reply"]
+
+
+# ---- catalog and agent ------------------------------------------------------------------------------
+
+def test_upload_builds_the_catalog(client, wid):
+    s = client.get(f"/api/workbooks/{wid}/summary").json()
+    assert s["catalog"]["built"] and {c["card_id"] for c in s["catalog"]["cards"]} == {"quote__t1", "materials__t1"}
+    full = client.get(f"/api/workbooks/{wid}/catalog").json()
+    quote = next(c for c in full["cards"] if c["card_id"] == "quote__t1")
+    assert "price" in [x["name"] for x in quote["columns"]] and full["relations"]
+    assert client.post(f"/api/workbooks/{wid}/catalog/rebuild").json()["built"]
+
+
+class _AgentLLM:
+    """Routes to the agent and plays a fixed sequence of agent actions."""
+    model = "scripted-agent"
+
+    def __init__(self, *actions):
+        self.actions = list(actions)
+
+    def json(self, system, user, schema, name="answer"):
+        return {"route": "data"}
+
+    def chat_json(self, messages, schema, **kw):
+        return schema(**self.actions.pop(0))
+
+
+def _actions():
+    return [{"thought": "count", "tool": "run_sql",
+             "args": {"sql": "SELECT COUNT(*) AS n FROM t_quote__t1 WHERE material = 'AL'"}},
+            {"thought": "done", "tool": "final_answer", "args": {"answer": "4 products use AL.", "result_ids": ["r1"]}}]
+
+
+def test_chat_sends_data_questions_to_the_agent(client, wid, monkeypatch):
+    monkeypatch.setattr(sheetir.web.app, "get_llm", lambda: _AgentLLM(*_actions()))
+    r = client.post(f"/api/workbooks/{wid}/chat", json={"message": "How many products use AL?", "lang": "en"}).json()
+    assert r["source"] == "agent" and r["grounded"] and r["reply"] == "4 products use AL."
+    assert [s["tool"] for s in r["steps"]] == ["run_sql", "final_answer"]
+    assert r["results"][0]["rows"] == [[4]] and r["provenance"][0]["sheet"] == "Quote"
+
+
+def test_chat_stream_sends_steps_then_the_answer(client, wid, monkeypatch):
+    monkeypatch.setattr(sheetir.web.app, "get_llm", lambda: _AgentLLM(*_actions()))
+    with client.stream("POST", f"/api/workbooks/{wid}/chat/stream",
+                       json={"message": "How many products use AL?", "lang": "en"}) as res:
+        body = "".join(res.iter_text())
+    events = [block.split("\n")[0].removeprefix("event: ") for block in body.strip().split("\n\n")]
+    assert events == ["step", "step", "final"]
+    import json
+    final = json.loads(body.strip().split("\n\n")[-1].split("data: ", 1)[1])
+    assert final["source"] == "agent" and final["reply"] == "4 products use AL."

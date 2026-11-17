@@ -1,0 +1,436 @@
+{"workbook": "wb_001.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D11", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A15:B25", "header_rows": [15], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D10", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_001.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G33", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_002.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A3:D11", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_002.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A3:B11", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_002.xlsx", "name": "products", "sheet": "SanPham", "range": "A4:D10", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_002.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A3:D16", "header_rows": [3, 4], "total_rows": [8, 10, 15, 16]}
+{"workbook": "wb_002.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A4:D17", "header_rows": [4, 5], "total_rows": [9, 11, 16, 17]}
+{"workbook": "wb_002.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A3:D16", "header_rows": [3, 4], "total_rows": [8, 10, 15, 16]}
+{"workbook": "wb_002.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A3:D16", "header_rows": [3, 4], "total_rows": [8, 10, 15, 16]}
+{"workbook": "wb_002.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A5:D18", "header_rows": [5, 6], "total_rows": [10, 12, 17, 18]}
+{"workbook": "wb_002.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A3:D16", "header_rows": [3, 4], "total_rows": [8, 10, 15, 16]}
+{"workbook": "wb_002.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A4:D17", "header_rows": [4, 5], "total_rows": [9, 11, 16, 17]}
+{"workbook": "wb_002.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A5:D18", "header_rows": [5, 6], "total_rows": [10, 12, 17, 18]}
+{"workbook": "wb_002.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A3:D16", "header_rows": [3, 4], "total_rows": [8, 10, 15, 16]}
+{"workbook": "wb_002.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A5:D18", "header_rows": [5, 6], "total_rows": [10, 12, 17, 18]}
+{"workbook": "wb_002.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A5:D18", "header_rows": [5, 6], "total_rows": [10, 12, 17, 18]}
+{"workbook": "wb_002.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A3:D16", "header_rows": [3, 4], "total_rows": [8, 10, 15, 16]}
+{"workbook": "wb_002.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A3:G31", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A13:B21", "header_rows": [13], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:E10", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_003.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:F31", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_004.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D10", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_004.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A14:B23", "header_rows": [14], "total_rows": []}
+{"workbook": "wb_004.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D11", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_004.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:E15", "header_rows": [1, 2], "total_rows": [6, 9, 14, 15]}
+{"workbook": "wb_004.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G31", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_005.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A3:D16", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_005.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A20:B33", "header_rows": [20], "total_rows": []}
+{"workbook": "wb_005.xlsx", "name": "products", "sheet": "SanPham", "range": "A5:D12", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_005.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A5:D22", "header_rows": [5], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_005.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A3:D20", "header_rows": [3], "total_rows": [9, 14, 19, 20]}
+{"workbook": "wb_005.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A3:D20", "header_rows": [3], "total_rows": [9, 14, 19, 20]}
+{"workbook": "wb_005.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A3:D20", "header_rows": [3], "total_rows": [9, 14, 19, 20]}
+{"workbook": "wb_005.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A3:D20", "header_rows": [3], "total_rows": [9, 14, 19, 20]}
+{"workbook": "wb_005.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A4:D21", "header_rows": [4], "total_rows": [10, 15, 20, 21]}
+{"workbook": "wb_005.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A4:D21", "header_rows": [4], "total_rows": [10, 15, 20, 21]}
+{"workbook": "wb_005.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A4:D21", "header_rows": [4], "total_rows": [10, 15, 20, 21]}
+{"workbook": "wb_005.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A5:D22", "header_rows": [5], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_005.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A3:D20", "header_rows": [3], "total_rows": [9, 14, 19, 20]}
+{"workbook": "wb_005.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A5:D22", "header_rows": [5], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_005.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A5:D22", "header_rows": [5], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_005.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A4:G40", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_006.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D14", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_006.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A18:B31", "header_rows": [18], "total_rows": []}
+{"workbook": "wb_006.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D8", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_006.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_006.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G45", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_007.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A4:D17", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_007.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A21:B34", "header_rows": [21], "total_rows": []}
+{"workbook": "wb_007.xlsx", "name": "products", "sheet": "SanPham", "range": "A4:D13", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_007.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A4:D21", "header_rows": [4], "total_rows": [9, 15, 20, 21]}
+{"workbook": "wb_007.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A3:D20", "header_rows": [3], "total_rows": [8, 14, 19, 20]}
+{"workbook": "wb_007.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A3:D20", "header_rows": [3], "total_rows": [8, 14, 19, 20]}
+{"workbook": "wb_007.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A5:D22", "header_rows": [5], "total_rows": [10, 16, 21, 22]}
+{"workbook": "wb_007.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A5:D22", "header_rows": [5], "total_rows": [10, 16, 21, 22]}
+{"workbook": "wb_007.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A3:D20", "header_rows": [3], "total_rows": [8, 14, 19, 20]}
+{"workbook": "wb_007.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A5:D22", "header_rows": [5], "total_rows": [10, 16, 21, 22]}
+{"workbook": "wb_007.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A5:D22", "header_rows": [5], "total_rows": [10, 16, 21, 22]}
+{"workbook": "wb_007.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A3:D20", "header_rows": [3], "total_rows": [8, 14, 19, 20]}
+{"workbook": "wb_007.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A4:D21", "header_rows": [4], "total_rows": [9, 15, 20, 21]}
+{"workbook": "wb_007.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A3:D20", "header_rows": [3], "total_rows": [8, 14, 19, 20]}
+{"workbook": "wb_007.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A3:D20", "header_rows": [3], "total_rows": [8, 14, 19, 20]}
+{"workbook": "wb_007.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A3:G52", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D14", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A18:B31", "header_rows": [18], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D7", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:D15", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_008.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G48", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_009.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D14", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_009.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A1:B14", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_009.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_009.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [8, 12, 18, 19]}
+{"workbook": "wb_009.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G52", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A3:D12", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A3:B12", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "products", "sheet": "SanPham", "range": "A5:D15", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A4:D14", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A5:D15", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A3:D13", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A3:D13", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A4:D14", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A4:D14", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A4:D14", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A4:D14", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A3:D13", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A5:D15", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A3:D13", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A5:D15", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_010.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A3:G37", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A3:D12", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A3:B12", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "products", "sheet": "SanPham", "range": "A5:D14", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A5:D15", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A4:D14", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A3:D13", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A5:D15", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A3:D13", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A5:D15", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A3:D13", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A4:D14", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A5:D15", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A4:D14", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A4:D14", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A4:D14", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_011.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A3:F36", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A1:B9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D11", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_012.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G26", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_013.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A3:D17", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_013.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A3:B17", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_013.xlsx", "name": "products", "sheet": "SanPham", "range": "A4:D14", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_013.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A5:E24", "header_rows": [5, 6], "total_rows": [13, 18, 23, 24]}
+{"workbook": "wb_013.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A3:E22", "header_rows": [3, 4], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_013.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A4:E23", "header_rows": [4, 5], "total_rows": [12, 17, 22, 23]}
+{"workbook": "wb_013.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A4:E23", "header_rows": [4, 5], "total_rows": [12, 17, 22, 23]}
+{"workbook": "wb_013.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A4:E23", "header_rows": [4, 5], "total_rows": [12, 17, 22, 23]}
+{"workbook": "wb_013.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A3:E22", "header_rows": [3, 4], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_013.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A4:E23", "header_rows": [4, 5], "total_rows": [12, 17, 22, 23]}
+{"workbook": "wb_013.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A4:E23", "header_rows": [4, 5], "total_rows": [12, 17, 22, 23]}
+{"workbook": "wb_013.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A5:E24", "header_rows": [5, 6], "total_rows": [13, 18, 23, 24]}
+{"workbook": "wb_013.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A5:E24", "header_rows": [5, 6], "total_rows": [13, 18, 23, 24]}
+{"workbook": "wb_013.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A5:E24", "header_rows": [5, 6], "total_rows": [13, 18, 23, 24]}
+{"workbook": "wb_013.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A3:E22", "header_rows": [3, 4], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_013.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A4:G58", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_014.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A4:D15", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_014.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A19:B30", "header_rows": [19], "total_rows": []}
+{"workbook": "wb_014.xlsx", "name": "products", "sheet": "SanPham", "range": "A3:D13", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_014.xlsx", "name": "revenue_all", "sheet": "DoanhThu", "range": "A5:F139", "header_rows": [5, 6], "total_rows": [139]}
+{"workbook": "wb_014.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A4:G40", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A13:B21", "header_rows": [13], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D11", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_015.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:F31", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A1:B9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D8", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_016.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:F27", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A1:B13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D10", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:E13", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_017.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G48", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_018.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A3:D12", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_018.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A16:B25", "header_rows": [16], "total_rows": []}
+{"workbook": "wb_018.xlsx", "name": "products", "sheet": "SanPham", "range": "A3:D12", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_018.xlsx", "name": "revenue_all", "sheet": "DoanhThu", "range": "A5:E115", "header_rows": [5, 6], "total_rows": [115]}
+{"workbook": "wb_018.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A4:F32", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_019.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A4:D16", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_019.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A20:B32", "header_rows": [20], "total_rows": []}
+{"workbook": "wb_019.xlsx", "name": "products", "sheet": "SanPham", "range": "A4:D12", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_019.xlsx", "name": "revenue_all", "sheet": "DoanhThu", "range": "A4:F150", "header_rows": [4, 5], "total_rows": [150]}
+{"workbook": "wb_019.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A4:F42", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A4:D18", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A3:B17", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "products", "sheet": "SanPham", "range": "A5:D13", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A3:D17", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A5:D19", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A5:D19", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A3:D17", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A4:D18", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A5:D19", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A5:D19", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A4:D18", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A4:D18", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A5:D19", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A4:D18", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A3:D17", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_020.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A3:G52", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A4:D14", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A3:B13", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "products", "sheet": "SanPham", "range": "A5:D13", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A4:E15", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A3:E14", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A4:E15", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A4:E15", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A3:E14", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A5:E16", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A5:E16", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A5:E16", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A4:E15", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A3:E14", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A3:E14", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A3:E14", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_021.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A4:F33", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_022.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D14", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_022.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A1:B14", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_022.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D7", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_022.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:D19", "header_rows": [1, 2], "total_rows": [7, 11, 18, 19]}
+{"workbook": "wb_022.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G45", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_023.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A4:D14", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_023.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A3:B13", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_023.xlsx", "name": "products", "sheet": "SanPham", "range": "A5:D13", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_023.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A5:E19", "header_rows": [5], "total_rows": [11, 15, 18, 19]}
+{"workbook": "wb_023.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A5:E19", "header_rows": [5], "total_rows": [11, 15, 18, 19]}
+{"workbook": "wb_023.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A5:E19", "header_rows": [5], "total_rows": [11, 15, 18, 19]}
+{"workbook": "wb_023.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A5:E19", "header_rows": [5], "total_rows": [11, 15, 18, 19]}
+{"workbook": "wb_023.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A3:E17", "header_rows": [3], "total_rows": [9, 13, 16, 17]}
+{"workbook": "wb_023.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A4:E18", "header_rows": [4], "total_rows": [10, 14, 17, 18]}
+{"workbook": "wb_023.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A3:E17", "header_rows": [3], "total_rows": [9, 13, 16, 17]}
+{"workbook": "wb_023.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A4:E18", "header_rows": [4], "total_rows": [10, 14, 17, 18]}
+{"workbook": "wb_023.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A4:E18", "header_rows": [4], "total_rows": [10, 14, 17, 18]}
+{"workbook": "wb_023.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A4:E18", "header_rows": [4], "total_rows": [10, 14, 17, 18]}
+{"workbook": "wb_023.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A3:E17", "header_rows": [3], "total_rows": [9, 13, 16, 17]}
+{"workbook": "wb_023.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A3:E17", "header_rows": [3], "total_rows": [9, 13, 16, 17]}
+{"workbook": "wb_023.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A4:G40", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A4:D14", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A3:B13", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "products", "sheet": "SanPham", "range": "A3:D12", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A3:E13", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A3:E13", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A5:E15", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A4:E14", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A3:E13", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A4:E14", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A5:E15", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A4:E14", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A4:E14", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A5:E15", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A3:E13", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A5:E15", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_024.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A3:G38", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_025.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A3:D17", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_025.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A21:B35", "header_rows": [21], "total_rows": []}
+{"workbook": "wb_025.xlsx", "name": "products", "sheet": "SanPham", "range": "A4:D11", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_025.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A3:E22", "header_rows": [3, 4], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_025.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A4:E23", "header_rows": [4, 5], "total_rows": [12, 17, 22, 23]}
+{"workbook": "wb_025.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A3:E22", "header_rows": [3, 4], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_025.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A4:E23", "header_rows": [4, 5], "total_rows": [12, 17, 22, 23]}
+{"workbook": "wb_025.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A5:E24", "header_rows": [5, 6], "total_rows": [13, 18, 23, 24]}
+{"workbook": "wb_025.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A5:E24", "header_rows": [5, 6], "total_rows": [13, 18, 23, 24]}
+{"workbook": "wb_025.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A3:E22", "header_rows": [3, 4], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_025.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A3:E22", "header_rows": [3, 4], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_025.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A3:E22", "header_rows": [3, 4], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_025.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A5:E24", "header_rows": [5, 6], "total_rows": [13, 18, 23, 24]}
+{"workbook": "wb_025.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A3:E22", "header_rows": [3, 4], "total_rows": [11, 16, 21, 22]}
+{"workbook": "wb_025.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A5:E24", "header_rows": [5, 6], "total_rows": [13, 18, 23, 24]}
+{"workbook": "wb_025.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A3:F51", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D11", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A1:B11", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D11", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:E12", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_026.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G34", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D10", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A1:B10", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D8", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:D11", "header_rows": [1, 2], "total_rows": []}
+{"workbook": "wb_027.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G35", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A1:D9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A1:B9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "products", "sheet": "SanPham", "range": "A1:D8", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A1:E9", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_028.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A1:G28", "header_rows": [1], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A3:D16", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "targets", "sheet": "MucTieu", "range": "A3:B16", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "products", "sheet": "SanPham", "range": "A5:D11", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_1", "sheet": "DT_T1", "range": "A3:D17", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_2", "sheet": "DT_T2", "range": "A3:D17", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_3", "sheet": "DT_T3", "range": "A3:D17", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_4", "sheet": "DT_T4", "range": "A4:D18", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_5", "sheet": "DT_T5", "range": "A3:D17", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_6", "sheet": "DT_T6", "range": "A4:D18", "header_rows": [4, 5], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_7", "sheet": "DT_T7", "range": "A5:D19", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_8", "sheet": "DT_T8", "range": "A3:D17", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_9", "sheet": "DT_T9", "range": "A5:D19", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_10", "sheet": "DT_T10", "range": "A3:D17", "header_rows": [3, 4], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_11", "sheet": "DT_T11", "range": "A5:D19", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "revenue_12", "sheet": "DT_T12", "range": "A5:D19", "header_rows": [5, 6], "total_rows": []}
+{"workbook": "wb_029.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A4:G52", "header_rows": [4], "total_rows": []}
+{"workbook": "wb_030.xlsx", "name": "branches", "sheet": "ChiNhanh", "range": "A3:D11", "header_rows": [3], "total_rows": []}
+{"workbook": "wb_030.xlsx", "name": "targets", "sheet": "ChiNhanh", "range": "A15:B23", "header_rows": [15], "total_rows": []}
+{"workbook": "wb_030.xlsx", "name": "products", "sheet": "SanPham", "range": "A5:D14", "header_rows": [5], "total_rows": []}
+{"workbook": "wb_030.xlsx", "name": "revenue_all", "sheet": "DoanhThu", "range": "A5:F102", "header_rows": [5], "total_rows": [102]}
+{"workbook": "wb_030.xlsx", "name": "employees", "sheet": "NhanSu", "range": "A4:F35", "header_rows": [4], "total_rows": []}

@@ -1,0 +1,30 @@
+{"workbook": "wb_001.xlsx", "seed": 347712782, "perturbations": ["formats", "hidden", "multi_header", "multi_table", "notes", "split_period", "unit_shift"]}
+{"workbook": "wb_002.xlsx", "seed": 258409929, "perturbations": ["hidden", "multi_header", "notes", "split_period", "title_rows", "total_rows"]}
+{"workbook": "wb_003.xlsx", "seed": 50017772, "perturbations": ["formats", "multi_header", "multi_table", "split_period", "unit_shift"]}
+{"workbook": "wb_004.xlsx", "seed": 104615284, "perturbations": ["formats", "hidden", "multi_header", "multi_table", "rename_cols", "split_period", "total_rows"]}
+{"workbook": "wb_005.xlsx", "seed": 852958473, "perturbations": ["hidden", "multi_table", "notes", "rename_cols", "split_period", "title_rows", "total_rows"]}
+{"workbook": "wb_006.xlsx", "seed": 177126709, "perturbations": ["hidden", "multi_header", "multi_table", "split_period", "total_rows"]}
+{"workbook": "wb_007.xlsx", "seed": 638199795, "perturbations": ["hidden", "multi_table", "notes", "rename_cols", "split_period", "title_rows", "total_rows"]}
+{"workbook": "wb_008.xlsx", "seed": 731472844, "perturbations": ["hidden", "multi_header", "multi_table", "notes", "rename_cols", "split_period", "unit_shift"]}
+{"workbook": "wb_009.xlsx", "seed": 138878003, "perturbations": ["hidden", "multi_header", "notes", "rename_cols", "split_period", "total_rows", "unit_shift"]}
+{"workbook": "wb_010.xlsx", "seed": 758487694, "perturbations": ["hidden", "multi_header", "notes", "rename_cols", "split_period", "title_rows", "unit_shift"]}
+{"workbook": "wb_011.xlsx", "seed": 282122033, "perturbations": ["multi_header", "notes", "split_period", "title_rows"]}
+{"workbook": "wb_012.xlsx", "seed": 490317463, "perturbations": ["formats", "hidden", "notes", "rename_cols", "split_period"]}
+{"workbook": "wb_013.xlsx", "seed": 224157762, "perturbations": ["formats", "hidden", "multi_header", "split_period", "title_rows", "total_rows"]}
+{"workbook": "wb_014.xlsx", "seed": 403973202, "perturbations": ["formats", "hidden", "multi_header", "multi_table", "notes", "title_rows", "total_rows", "unit_shift"]}
+{"workbook": "wb_015.xlsx", "seed": 109723116, "perturbations": ["multi_table", "split_period", "unit_shift"]}
+{"workbook": "wb_016.xlsx", "seed": 814049802, "perturbations": ["notes", "rename_cols", "split_period"]}
+{"workbook": "wb_017.xlsx", "seed": 353975088, "perturbations": ["formats", "hidden", "notes", "rename_cols", "split_period"]}
+{"workbook": "wb_018.xlsx", "seed": 784909565, "perturbations": ["multi_header", "multi_table", "rename_cols", "title_rows", "total_rows"]}
+{"workbook": "wb_019.xlsx", "seed": 391524801, "perturbations": ["formats", "multi_header", "multi_table", "notes", "title_rows", "total_rows", "unit_shift"]}
+{"workbook": "wb_020.xlsx", "seed": 690558911, "perturbations": ["hidden", "rename_cols", "split_period", "title_rows"]}
+{"workbook": "wb_021.xlsx", "seed": 775053406, "perturbations": ["formats", "multi_header", "notes", "rename_cols", "split_period", "title_rows"]}
+{"workbook": "wb_022.xlsx", "seed": 887458869, "perturbations": ["hidden", "multi_header", "split_period", "total_rows"]}
+{"workbook": "wb_023.xlsx", "seed": 149519330, "perturbations": ["formats", "hidden", "notes", "rename_cols", "split_period", "title_rows", "total_rows"]}
+{"workbook": "wb_024.xlsx", "seed": 140739294, "perturbations": ["formats", "hidden", "split_period", "title_rows"]}
+{"workbook": "wb_025.xlsx", "seed": 548195686, "perturbations": ["formats", "multi_header", "multi_table", "rename_cols", "split_period", "title_rows", "total_rows"]}
+{"workbook": "wb_026.xlsx", "seed": 556572693, "perturbations": ["formats", "hidden", "multi_header", "notes", "rename_cols", "split_period", "unit_shift"]}
+{"workbook": "wb_027.xlsx", "seed": 959938158, "perturbations": ["hidden", "multi_header", "rename_cols", "split_period"]}
+{"workbook": "wb_028.xlsx", "seed": 750779486, "perturbations": ["formats", "hidden", "rename_cols", "split_period", "unit_shift"]}
+{"workbook": "wb_029.xlsx", "seed": 720647678, "perturbations": ["hidden", "multi_header", "split_period", "title_rows"]}
+{"workbook": "wb_030.xlsx", "seed": 502227527, "perturbations": ["formats", "multi_table", "rename_cols", "title_rows", "total_rows", "unit_shift"]}

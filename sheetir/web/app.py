@@ -20,21 +20,27 @@ import io
 import json
 import logging
 import os
+import queue
 import re
 import sqlite3
 import tempfile
+import threading
 from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import __version__, fixes
+from ..agent.loop import answer as agent_answer
+from ..agent.tools import jsonable
 from ..build import build_ir
+from ..catalog.store import CatalogHandle, build_catalog
+from ..config import is_local_url
 from ..convert import SUFFIXES
-from ..llm import get_llm
+from ..llm import get_llm, llm_status as _llm_settings_status
 from ..loader import WorkbookError
 from ..report import audit_report, to_html, to_markdown
 from ..sample import make_quotation
@@ -131,11 +137,14 @@ def _ingest(data: bytes, filename: str, file_modified: str | None = None) -> dic
         failed = _parse(folder, src)
         if failed:
             return {**base, "failed": True, "error": failed, "counts": None, "status": "failed"}
-    return {**base, "failed": False, "counts": _db_counts(db), "status": provenance.db_meta(db).get("parse_status", "unverified")}
+    h = _catalog(wid)
+    return {**base, "failed": False, "counts": _db_counts(db), "status": provenance.db_meta(db).get("parse_status", "unverified"),
+            "catalog": h.stats if h else None}
 
 
 def _parse(folder: Path, src: Path) -> dict | None:
-    """Build (and verify) the IR for a stored workbook. On failure, record why in error.json and return it."""
+    """Build (and verify) the IR for a stored workbook, then its catalog. On failure of the IR, record why in
+    error.json and return it; a catalog that fails to build only costs the agent (see _build_catalog)."""
     try:
         build_ir(src, folder / "ir.db", user_tables=provenance.user_tables(folder), ignored=provenance.ignored(folder))
     except WorkbookError as exc:
@@ -143,7 +152,47 @@ def _parse(folder: Path, src: Path) -> dict | None:
     except Exception as exc:  # noqa: BLE001 - a SheetIR bug: keep the upload, say so, retry after an upgrade
         return provenance.record_failure(folder, "parse_failed", f"{type(exc).__name__}: {exc}", __version__)
     provenance.clear_failure(folder)
+    _build_catalog(folder)
     return None
+
+
+CATALOG_ERROR = "catalog_error.txt"
+
+
+def _build_catalog(folder: Path) -> CatalogHandle | None:
+    """Clean tables, families, relations, cards and index for the agent (sheetir.catalog). The language model, when
+    configured, writes the cards and reads unsure tables; without it the rules do. A failure is logged and kept in
+    catalog_error.txt; chat then answers with the IR-only path."""
+    err = folder / CATALOG_ERROR
+    try:
+        h = build_catalog(folder / "ir.db", folder, llm=get_llm())
+    except Exception as exc:  # noqa: BLE001
+        log.exception("catalog build failed for %s", folder.name)
+        err.write_text(f"{type(exc).__name__}: {exc}", encoding="utf-8")
+        return None
+    if err.exists():
+        err.unlink()
+    return h
+
+
+def _catalog(wid: str, build: bool = True) -> CatalogHandle | None:
+    """The workbook's catalog; built now when missing or made by an older pipeline (and `build`)."""
+    folder = _folder(wid)
+    h = CatalogHandle.open(folder)
+    if h is None and build and (folder / "ir.db").exists() and not (folder / CATALOG_ERROR).exists():
+        h = _build_catalog(folder)
+    return h
+
+
+def _catalog_brief(h: CatalogHandle | None, folder: Path) -> dict:
+    err = folder / CATALOG_ERROR
+    if h is None:
+        return {"built": False, "error": err.read_text(encoding="utf-8") if err.exists() else None}
+    return {"built": True, "stats": h.stats, "errors": h.data.get("errors", [])[:10], "model": h.data.get("model"),
+            "cards": [{"card_id": c.card_id, "sql_name": c.sql_name, "title": c.title, "row_count": c.row_count,
+                       "time_coverage": c.time_coverage, "low_confidence": c.low_confidence,
+                       "sheets": list(dict.fromkeys(s["sheet"] for s in c.sources)), "warnings": len(c.warnings)}
+                      for c in h.cards]}
 
 
 @app.get("/legacy", response_class=HTMLResponse)
@@ -225,7 +274,28 @@ def summary(wid: str):
         "checks": _rows(con, "SELECT name, passed, severity, detail FROM checks"),
         "issues_by_kind": _rows(con, "SELECT kind, severity, COUNT(*) AS n FROM issues GROUP BY kind, severity "
                                      "ORDER BY CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, n DESC"),
+        "catalog": _catalog_brief(_catalog(wid, build=False), _folder(wid)),
     }
+
+
+@app.get("/api/workbooks/{wid}/catalog")
+def catalog(wid: str):
+    """The catalog the agent works from: build statistics, and each card in full (columns, units, sample rows,
+    relations, source sheets, warnings). Built on first request when missing."""
+    h = _catalog(wid)
+    if h is None:
+        return _catalog_brief(None, _folder(wid))
+    return {**_catalog_brief(h, _folder(wid)), "cards": [c.model_dump(mode="json") for c in h.cards],
+            "families": [f.model_dump() for f in h.families], "relations": [r.model_dump() for r in h.relations]}
+
+
+@app.post("/api/workbooks/{wid}/catalog/rebuild")
+def rebuild_catalog(wid: str):
+    folder = _folder(wid)
+    if (folder / CATALOG_ERROR).exists():
+        (folder / CATALOG_ERROR).unlink()
+    h = _build_catalog(folder)
+    return _catalog_brief(h, folder)
 
 
 @app.get("/api/workbooks/{wid}/sheet")
@@ -575,14 +645,18 @@ def run_sql(wid: str, req: SqlRequest):
 
 class ChatRequest(BaseModel):
     message: str
-    lang: str = "zh"  # reply language: zh | en
+    lang: str = "zh"  # UI language (zh | en | vi), used when the question's own language cannot be told
 
 
 @app.get("/api/llm")
 def llm_status():
-    """Whether chat answers come from a language model (OPENAI_API_KEY set) or from the built-in rules."""
+    """Whether chat answers come from a language model or from the built-in rules, and if not, why."""
     llm = get_llm()
-    return {"enabled": llm is not None, "model": llm.model if llm else None}
+    if llm is None:
+        reason = _llm_settings_status()["reason"] or "no language model is configured"
+        return {"enabled": False, "model": None, "endpoint": None, "reason": reason, "local": True}
+    return {"enabled": True, "model": llm.model, "endpoint": llm.base_url, "reason": None,
+            "local": is_local_url(llm.base_url)}
 
 
 def _only_cells(con: sqlite3.Connection, message: str) -> bool:
@@ -592,16 +666,43 @@ def _only_cells(con: sqlite3.Connection, message: str) -> bool:
     return bool(cells) and not re.sub(r"[\s,，、;；?？.。]", "", rest)
 
 
-@app.post("/api/workbooks/{wid}/chat")
-def chat(wid: str, req: ChatRequest):
-    """Answer with the language model when one is configured (sheetir.understand.ask, grounded in the IR), else with
-    the built-in rules. Bare cell ids always get the rule-based cell card; if the model fails, the rules answer and
-    `fallback` says why."""
+ROUTE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["route"],
+                "properties": {"route": {"type": "string", "enum": ["data", "structure", "issues"]}}}
+ROUTE_SYSTEM = """Classify a question about an Excel workbook.
+- data: about the values in its tables: lookups, counts, totals, averages, comparisons, rankings, trends, periods,
+  or a request to chart or visualize them.
+- structure: what the workbook is or does, its sheets, columns, formulas, how a cell is calculated, parameters.
+- issues: errors, risks, problems or warnings found in the workbook.
+Return JSON {"route": ...}."""
+
+
+def _route(question: str, llm, h: CatalogHandle) -> str:
+    titles = "; ".join(c.title for c in h.cards[:30])
+    try:
+        return llm.json(ROUTE_SYSTEM, f"Tables: {titles}\n\nQuestion: {question}", ROUTE_SCHEMA, "route")["route"]
+    except Exception:  # noqa: BLE001 - the agent is the safer default for a question about data
+        return "data"
+
+
+def _chat(wid: str, req: ChatRequest, on_step=None) -> dict:
+    """Bare cell ids get the rule-based cell card; with no model, the rules answer. With a model, questions about the
+    data go to the agent over the catalog (sheetir.agent), questions about structure and issues to the IR-grounded
+    Q&A (sheetir.understand.ask). If the model path fails, the rules answer and `fallback` says why."""
     con = _connect(wid)
     llm = get_llm()
     if llm is None or _only_cells(con, req.message):
         return {**answer(con, req.message, req.lang), "source": "rules"}
     try:
+        h = _catalog(wid)
+        route = _route(req.message, llm, h) if h is not None and h.cards else "ir"
+        if route == "data":
+            r = agent_answer(req.message, h, llm, lang=req.lang, on_step=on_step)
+            last_sql = r.results[-1]["sql"] if r.results else None
+            return jsonable({
+                "reply": r.answer, "cells": [], "source": "agent", "model": r.model, "route": "data", "sql": last_sql,
+                "grounded": r.grounded, "ungrounded": r.ungrounded, "steps": [s.model_dump() for s in r.steps],
+                "results": [{**x, "rows": x["rows"][:50]} for x in r.results], "chart": r.chart,
+                "provenance": r.provenance, "stopped": r.stopped, "seconds": r.seconds})
         r = ask(con, req.message, llm, req.lang)
     except Exception as e:  # any failure of the model path: the user still gets an answer, and the reason
         log.exception("LLM chat failed; answering with the rules")
@@ -613,6 +714,41 @@ def chat(wid: str, req: ChatRequest):
                    lambda m: f"`{m[1]}`" if m[1] in known else m[0], r["reply"])
     return {"reply": reply, "cells": r["cells"], "source": "llm", "model": r["model"], "route": r["route"],
             "sql": r["sql"], "grounded": r["grounded"], "ungrounded": r["ungrounded"]}
+
+
+@app.post("/api/workbooks/{wid}/chat")
+def chat(wid: str, req: ChatRequest):
+    """One answer (see _chat). /chat/stream gives the same answer with the agent's steps as they happen."""
+    return _chat(wid, req)
+
+
+@app.post("/api/workbooks/{wid}/chat/stream")
+def chat_stream(wid: str, req: ChatRequest):
+    """Server-sent events: `step` for each agent step ({n, thought, tool, args, result, seconds}) as it finishes,
+    then `final` with the body /chat returns (or `error`)."""
+    _connect(wid).close()  # 404 before the stream starts
+    events: queue.Queue = queue.Queue()
+
+    def work():
+        try:
+            events.put(("final", _chat(wid, req, on_step=lambda s: events.put(("step", s.model_dump())))))
+        except Exception as e:  # noqa: BLE001
+            events.put(("error", {"error": f"{type(e).__name__}: {e}"[:300]}))
+        finally:
+            events.put(None)
+
+    threading.Thread(target=work, daemon=True).start()
+
+    def stream():
+        while True:
+            item = events.get()
+            if item is None:
+                return
+            kind, data = item
+            yield f"event: {kind}\ndata: {json.dumps(jsonable(data), ensure_ascii=False, default=str)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/workbooks/{wid}/graph")

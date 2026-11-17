@@ -17,3 +17,12 @@ SheetTwin_SystemDesign_Slides.md
 
 # local secrets (API keys): never committed
 .env
+
+# LLM call log (holds workbook contents), caches, local models
+.logs/
+.cache/
+models/
+
+# eval: per-workbook IR and catalog caches, run results
+eval/datasets/*/.work/
+results/

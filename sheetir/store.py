@@ -7,7 +7,8 @@ import sqlite3
 from pathlib import Path
 
 # Bumped when the tables below change; the web UI offers to re-parse databases built with an older one.
-IR_SCHEMA = 4  # 3: meta carries parse_status, verification and load_warnings; 4: ignored_issues
+IR_SCHEMA = 5  # 3: meta carries parse_status, verification and load_warnings; 4: ignored_issues;
+# 5: tables.gap_rows, merges, filters (what the clean stage needs to cut tables without re-reading the file)
 
 SCHEMA = """
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
@@ -25,7 +26,9 @@ CREATE TABLE literals(cell_id TEXT, value REAL, function TEXT);  -- function = e
 CREATE TABLE tables(
     table_id INT PRIMARY KEY, sheet TEXT, name TEXT, kind TEXT, source TEXT,
     header_row INT, row_start INT, row_end INT, col_start INT, col_end INT,
-    key_col INT, total_row INT, header_top INT, confidence REAL);
+    key_col INT, total_row INT, header_top INT, confidence REAL, gap_rows TEXT);
+CREATE TABLE merges(sheet TEXT, ref TEXT);      -- merged ranges, A1
+CREATE TABLE filters(sheet TEXT, ref TEXT);     -- each sheet's AutoFilter range, A1
 CREATE TABLE fields(
     field_id INTEGER PRIMARY KEY, table_id INT, col INT, header TEXT, name TEXT,
     unit TEXT, kind TEXT, r1c1 TEXT, number_format TEXT);

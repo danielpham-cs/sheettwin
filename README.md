@@ -72,8 +72,9 @@ docker compose up --build    # http://localhost:8765 (first build takes a few mi
 
 After pulling new code, run the same command again to rebuild. Uploads and SheetIR databases live in the Docker volume
 `sheettwin-data`, so they survive rebuilds (`docker compose down -v` deletes them). To enable the LLM features, put
-`OPENAI_API_KEY=...` (and optionally `SHEETIR_LLM_MODEL`, `OPENAI_BASE_URL`) in a `.env` file next to
-`docker-compose.yml`; it is read when the container starts and never copied into the image.
+`OPENAI_BASE_URL=...` and `SHEETIR_LLM_MODEL=...` (see [Chat with a language model](#chat-with-a-language-model)) in a
+`.env` file next to `docker-compose.yml`; it is read when the container starts and never copied into the image. A
+server on the host is `http://host.docker.internal:<port>/v1` from inside the container.
 
 ### From source (to work on it)
 
@@ -245,15 +246,31 @@ its database (never the original file).
 
 The chat can answer with a language model (`sheetir/understand.py`) through any endpoint that speaks the OpenAI Chat
 Completions protocol with JSON-schema output. All calls go through `sheetir/llm.py`, so the model and runtime are
-configuration. Copy `.env.example` to `.env` (git-ignored) and set:
+configuration: the `llm` block of `config/settings.yaml` (all settings are there; `SHEETIR_CONFIG` points at another
+file), or these variables, which override it. Copy `.env.example` to `.env` (git-ignored) and set:
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `OPENAI_API_KEY` | Turns the model on. Local servers ignore its value, but it must not be empty | (unset: rules only) |
-| `OPENAI_BASE_URL` | Endpoint, e.g. Ollama at `http://<host>:11434/v1`, vLLM or llama.cpp at `http://<host>:8000/v1` | `https://api.openai.com/v1` |
-| `SHEETIR_LLM_MODEL` | Model name as the endpoint knows it, e.g. `qwen3:30b-a3b` on Ollama | `gpt-5.4-mini` |
+| `OPENAI_BASE_URL` | Endpoint, e.g. Ollama at `http://<host>:11434/v1`, vLLM or llama.cpp at `http://<host>:8000/v1`. Turns the model on | `http://127.0.0.1:8000/v1` (off) |
+| `OPENAI_API_KEY` | Key for endpoints that need one. Also turns the model on | (none) |
+| `SHEETIR_LLM_MODEL` | Model name as the endpoint knows it, e.g. `qwen3:30b-a3b` on Ollama | `qwen3.5-35b-a3b-int4` |
+| `SHEETIR_ALLOW_REMOTE_LLM` | `1` allows an endpoint outside this machine and the local network, such as a cloud API | off |
+| `SHEETIR_LOG_DIR` | Where `llm.jsonl` (every model call) is written | `.logs` |
 
-Environment variables take precedence over `.env`. `GET /api/llm` shows whether the model is on.
+Environment variables take precedence over `.env`. `GET /api/llm` shows whether the model is on, and if not, why.
+`sheetir serve` prints the same at startup.
+
+**Offline by default.** An endpoint that is neither this machine nor the local network is refused unless
+`llm.allow_remote` (or `SHEETIR_ALLOW_REMOTE_LLM=1`) is set, since the workbook's contents would leave it.
+
+**Thinking** is off for every call. How it is switched off depends on the server (`llm.thinking_param`):
+`chat_template_kwargs` (vLLM, SGLang, llama.cpp with Qwen templates; the default for non-OpenAI endpoints), `think`
+(Ollama), `none`. If the backend rejects structured output, the client puts the schema in the prompt instead, and every
+JSON reply is validated and sent back with the error when it does not match.
+
+**Checking a runtime (M0).** `uv run python bench/m0_runtime.py --md docs/m0-results.md` measures tokens per second,
+checks that thinking is off and structured output works, runs `llm.max_concurrency` requests at once, and with
+`--embedding` loads the local embedding model. Run it with the network unplugged.
 
 **Ollama.** To serve another machine on the LAN, start Ollama with `OLLAMA_HOST=0.0.0.0`. Also raise its context
 length (`OLLAMA_CONTEXT_LENGTH=32768`): its default is short, and a longer prompt is cut without an error, which shows
@@ -262,8 +279,8 @@ slow.
 
 **What the model sees.** A compact sketch of the parsed workbook (`sheetir/sketch.py`: sheets, tables with their
 fields and a few sample rows, parameters, results, lookups, issues), the database schema, the question, and the rows
-of the queries SheetIR runs for it. Never the file itself. With a cloud endpoint this content leaves the machine;
-use a local server for confidential workbooks.
+of the queries SheetIR runs for it. Never the file itself. With a cloud endpoint (allowed only with
+`SHEETIR_ALLOW_REMOTE_LLM`) this content leaves the machine. Every call is also logged locally to `.logs/llm.jsonl`.
 
 **How an answer is made.** SheetIR enforces each step; the prompt alone is not trusted to:
 
@@ -299,6 +316,65 @@ uv run python bench/eval_qa.py --repeat 2 -o qa.json
 
 The failures before were replies in English to Chinese questions (4) and a wrong item in a list (1). These figures
 come from the synthetic sample only, not from real-world workbooks.
+
+---
+
+## Ask about the data (query agent)
+
+Questions about the values in a workbook (*Tổng doanh thu quý 1 của CN Hà Nội?*, *which branches beat their
+target?*, *chart revenue by month*) go to a query agent over a **catalog** of clean tables, built after every parse
+(design: [`docs/excel-agent-system-design.md`](docs/excel-agent-system-design.md), plan and status:
+[`docs/implementation-plan.md`](docs/implementation-plan.md)). Questions about structure and issues still go to the
+IR-grounded Q&A above; a short routing call decides.
+
+**The catalog** (`sheetir/catalog`, built into the workbook's folder: `data.duckdb`, `catalog.json`):
+
+1. **Table specs** from SheetIR's detection (Excel Tables, AutoFilters, named ranges, then the layout heuristics),
+   refined: a second header row read as data and a total row above trailing notes are recognized. Tables the rules are
+   unsure of, and blocks of cells no table covers, go to the language model (when configured) with the region encoded
+   as text; its answer is validated and retried, and kept only if valid (else the table is marked low confidence).
+2. **Clean tables** (`sheetir/clean`) in DuckDB: header levels flattened into SQL identifiers (unaccented: *Doanh thu
+   (triệu đồng)* → `doanh_thu`), merged cells opened, subtotal, total, note and section rows removed (section labels
+   become a `section` column), values typed from number formats and contents (Vietnamese and English number styles,
+   percentages, day-first dates), units read from headers and formats (`trieu_vnd`, `nghin_vnd`, `percent`, …), and
+   column sums checked against the total row. Formulas Excel stored no result for (files written by other programs)
+   are computed by `sheetir/recalc.py`.
+3. **Families**: same-shaped tables split over sheets (DT_T1 … DT_T12) become one view with `period` and
+   `_source_sheet` columns; renamed columns are matched by position, and money columns in another unit (nghìn vs
+   triệu) are converted to the unit most members use.
+4. **Relations**: join keys from value containment, key-likeness and name similarity (abbreviations and synonyms:
+   `ma_cn` ~ `ma_chi_nhanh` ~ `branch_id`), plus the workbook's own lookups.
+5. **Cards** per table or family (title, description, columns with types and units, sample rows, time coverage,
+   relations, sources), written by rules and rewritten by the model when one is configured, and a **search index**
+   (BM25 on unaccented words, plus local embeddings when `embedding.model_path` holds a model).
+
+**The agent** (`sheetir/agent`) takes one JSON action per step: `search_catalog`, `describe_table`, `run_sql`,
+`make_chart`, `final_answer`. SQL is checked by sqlglot (one SELECT, catalog tables only, no file functions) and run on
+a read-only DuckDB connection without external access, with a timeout. Tool results carry hints: the real values of a
+column when a filter finds nothing, the right column names after an unknown one, units that differ, a join that
+multiplies rows, OR mixed with AND without parentheses. Before an answer is returned, every number in it must appear in
+a query result; otherwise it goes back to the model once, and then carries a note. The answer lists its
+**sources** (sheets and ranges, only the months a query selected for a family) and, when asked, a **chart**. In the
+chat UI the steps appear as they happen (`POST /api/workbooks/{id}/chat/stream`, server-sent events).
+
+`GET /api/workbooks/{id}/catalog` returns the catalog; `POST …/catalog/rebuild` builds it again.
+
+### Evaluation
+
+`eval/` generates synthetic messy workbooks with gold tables and answers, and scores systems on them (design §11):
+
+```bash
+uv run python -m eval.generator.make --out eval/datasets/synthetic_v1 --workbooks 30 --questions 6
+uv run python -m eval.run_eval --dataset eval/datasets/synthetic_v1 --system b2 --out results/b2.json
+uv run python -m eval.metrics compare results/b0.json results/b1.json results/b2.json
+```
+
+The generator writes a Vietnamese retail chain's branches, products, staff, targets and monthly revenue, with any of
+10 perturbations (title rows, two-level merged headers, two tables on a sheet, regional subtotals and totals, notes,
+one sheet per month, renamed columns, some months in thousands, hidden parts, number formats). Questions fall in 7
+categories, the traps among them asked only where the workbook sets them. Systems: **B0** the workbook dumped into the
+prompt, **B1** the same agent over raw sheets (no detection, cleaning, families, relations or cards), **B2** the full
+pipeline. Results with `gpt-5.4-mini` are in [`docs/eval-results.md`](docs/eval-results.md).
 
 ---
 
@@ -623,6 +699,12 @@ SheetTwin/
 │   ├── sketch.py      compact text sketch of a parsed workbook for the model
 │   ├── understand.py  grounded Q&A (routing, enforced query, number and language checks); table suggestions
 │   ├── sample.py      synthetic quotation workbook with planted errors
+│   ├── config.py      settings: config/settings.yaml, environment overrides, offline guard
+│   ├── recalc.py      values for formulas Excel stored no result for
+│   ├── detect/        TableSpec from the IR; language-model fallback for unsure tables (region encoding, validation)
+│   ├── clean/         headers, identifiers, types, units, total/subtotal/note rows -> one clean table
+│   ├── catalog/       DuckDB store, families, relations, cards, search index, CatalogHandle
+│   ├── agent/         query agent: protocol, SQL guard, tools and hints, prompts, loop, provenance
 │   ├── cli.py         sample | build | trace | sql | serve
 │   └── web/
 │       ├── app.py             FastAPI backend
@@ -634,6 +716,8 @@ SheetTwin/
 │           ├── index.html     structure browser (/legacy)
 │           └── app/           chat UI build output (git-ignored)
 ├── frontend/          landing page + chat UI source (Next.js); `npm run build` copies it into static/app
+├── config/settings.yaml   all settings (design §10)
+├── eval/              generator (base_data, perturb, questions, make), metrics, run_eval, baselines (B0, B1), datasets
 └── tests/
     ├── test_refs.py   reference parsing and R1C1 round trips
     ├── test_build.py  end-to-end build on the sample, Excel Tables, cycles
@@ -644,7 +728,12 @@ SheetTwin/
     ├── test_robustness.py  unreadable files and failed uploads
     ├── test_understand.py  grounded Q&A with a scripted model: routing, enforced query, number and language checks
     ├── test_report.py  audit report: content, formats, languages, HTML escaping, downloads
-    ├── test_web.py  web API (summary, sheet, layout, download, re-parse, delete), chat with and without a model, dependency graphs, chart data
+    ├── test_web.py  web API (summary, sheet, layout, download, re-parse, delete), chat with and without a model, dependency graphs, chart data, catalog, agent route, streaming
+    ├── test_config.py, test_llm.py  settings and the offline guard; the model client (structured output, retries, thinking, log, concurrency)
+    ├── test_clean.py  identifiers, units, typing, header levels, subtotals, sections, totals check, merges, AutoFilter and named-range tables
+    ├── test_catalog.py  periods, families in one unit, join keys, search, versioning, computed formula values
+    ├── test_agent.py  SQL guard, tools and hints, charts, the loop's checks, provenance
+    ├── test_recalc.py, test_eval.py  formula evaluator against Excel's stored results; generator and scoring
     └── conftest.py  turns the language model off in every test
 ```
 
@@ -656,7 +745,7 @@ SheetTwin/
 uv run pytest
 ```
 
-124 tests cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL), provenance (duplicate uploads, aliases, versions, diffs, download names), the independent parse check and its tamper control, conversion of .csv (dialects, encodings), .xls and .ods (formulas, results, styles, names), unreadable files (password, not a workbook, damaged package, broken formatting) and failed uploads, user table corrections (applied on re-parse, validated, reset), chat answers, dependency graphs and chart data, the grounded Q&A with a scripted model (routing, the enforced query, the issue list, the number check, the reply language), chat with and without a model and its fallback, and the audit report (content, both formats and languages, HTML escaping, downloads). The tests never call a real language model: `tests/conftest.py` turns it off even when `.env` configures one, and `bench/eval_qa.py` is the check against a real model. The chat UI itself is not covered by automated tests yet.
+244 tests. Besides the data pipeline and agent (see the layout above), they cover reference parsing, R1C1 round trips, grouping, table and parameter detection (including year and formatted headers, multi-row headers, stub columns, spacer columns and sections inside tables), semantic addresses, detection of every planted problem, tracing across sheets and defined names, Excel Tables with structured references, cycle detection, relations from lookups and conditional aggregates, the tree-model evaluator, the web API (summary, sheet, layout, download, re-parse, delete, read-only SQL), provenance (duplicate uploads, aliases, versions, diffs, download names), the independent parse check and its tamper control, conversion of .csv (dialects, encodings), .xls and .ods (formulas, results, styles, names), unreadable files (password, not a workbook, damaged package, broken formatting) and failed uploads, user table corrections (applied on re-parse, validated, reset), chat answers, dependency graphs and chart data, the grounded Q&A with a scripted model (routing, the enforced query, the issue list, the number check, the reply language), chat with and without a model and its fallback, and the audit report (content, both formats and languages, HTML escaping, downloads). The tests never call a real language model: `tests/conftest.py` turns it off even when `.env` configures one, and `bench/eval_qa.py` is the check against a real model. The chat UI itself is not covered by automated tests yet.
 
 ---
 
@@ -770,7 +859,7 @@ pipeline on all 737 sheets with 5-fold cross-validation. That is not directly co
 | A3 Interactive twin web app | **Partial.** Structure browser only; no what-if sliders or recalculation |
 | A1 Verified Python model | Not started: transpiler and L1/L2 verification |
 | A2 Plain-language specification | Not started |
-| A4 Grounded Q&A analyst | **Partial.** Questions answered from the IR with enforced read-only SQL and checked numbers; no scenario tools (`run_scenario`, sensitivity, goal seek), which need the twin engine |
+| A4 Grounded Q&A analyst | **Partial.** Data questions answered by a query agent over a catalog of clean tables (families of monthly sheets, units, join keys), with guarded SQL, checked numbers, sources and charts; structure and issue questions from the IR. Evaluated on synthetic workbooks only. No scenario tools (`run_scenario`, sensitivity, goal seek), which need the twin engine |
 
 Next steps, in order:
 
@@ -781,6 +870,12 @@ Next steps, in order:
 5. **Storage**: content-addressed version history, a catalog across workbooks, encryption at rest.
 
 ### Known limitations
+
+- The data pipeline and agent are evaluated on generated workbooks only (one company shape, Vietnamese), not on real
+  files yet. The language-model fallback for detection has not been measured (the generated tables are all found by
+  the rules), and no local model has been measured yet (`bench/m0_runtime.py` is ready for the target machine).
+- Wide tables stay wide (one column per month); turning them long is left until evaluation shows the need.
+- `sheetir/recalc.py` covers common functions only; a formula with anything else keeps no value when Excel stored none.
 
 - Table detection uses hand-set weights by default. The learned scorer (`--tables model`) was trained only on statistical tables from public agencies, without formulas; it has not been evaluated on business workbooks. The table-extent rules (stub columns, gaps, side-by-side merging) were tuned on StatSheets itself. Transposed tables (headers down the first column) are not detected as tables (their formulas still group by row), and two tables side by side with no blank column between them are read as one.
 - `INDIRECT`/`OFFSET` dependencies are flagged but not resolved.
