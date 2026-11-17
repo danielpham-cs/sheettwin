@@ -1,15 +1,17 @@
 "use client";
 
 import {
-  ChartPie, ChevronRight, Database, FilePlus2, FileSpreadsheet, FolderOutput, Grid3x3, Languages, ListChecks, MessageSquareText, Network,
-  Search, Sparkles, Trash2,
+  ChartPie, ChevronRight, Database, FilePlus2, FileSpreadsheet, FolderOutput, Grid3x3, Languages, ListChecks, MessageSquareText, Moon, Network, Sun,
+  Search, Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useState } from "react";
 import type { Workbook } from "@/lib/api";
+import { Logo } from "@/components/Logo";
 import { StatusBadge } from "@/components/ParseStatus";
 import { useI18n } from "@/lib/i18n";
+import { useTheme } from "@/lib/theme";
 
 export type View = "chat" | "sheets" | "issues" | "query" | "graph" | "charts";
 
@@ -33,19 +35,19 @@ function RailButton({
       onClick={onClick}
       aria-label={label}
       aria-current={active ? "page" : undefined}
-      className={`group relative grid size-11 place-items-center rounded-2xl transition-all duration-200
+      className={`group relative grid size-11 place-items-center rounded-lg transition-all duration-200
         ${accent
-          ? "bg-gradient-to-br from-violet-500 to-cyan-400 text-white shadow-lg shadow-violet-500/30 hover:scale-105 hover:shadow-violet-500/50"
+          ? "bg-blue-600 text-snow shadow-lg hover:bg-blue-500"
           : active
-            ? "bg-violet-500/20 text-violet-100 ring-1 ring-violet-400/50 shadow-md shadow-violet-500/20"
+            ? "bg-blue-500/20 text-blue-100 ring-1 ring-blue-400/50 shadow-md"
             : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
     >
       {/* Marker on the rail's left edge (the rail is 72px, the button 44px: 14px each side) */}
       {active && !accent && (
-        <span className="absolute -left-[14px] top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-violet-400 to-cyan-300" />
+        <span className="absolute -left-[14px] top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-blue-500" />
       )}
       {children}
-      <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-lg border border-white/10 bg-zinc-900/95 px-2.5 py-1 text-xs text-zinc-100 opacity-0 shadow-xl backdrop-blur transition-all duration-150 group-hover:translate-x-0.5 group-hover:opacity-100">
+      <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-lg border border-white/10 bg-zinc-900/95 px-2.5 py-1 text-xs text-zinc-100 opacity-0 shadow-xl transition-all duration-150 group-hover:translate-x-0.5 group-hover:opacity-100">
         {label}
       </span>
     </button>
@@ -54,6 +56,7 @@ function RailButton({
 
 export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, onNewData, onToggleExports, onRemove }: Props) {
   const { t, lang, setLang } = useI18n();
+  const [theme, toggleTheme] = useTheme();
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const shown = workbooks.filter((w) => [w.name, ...w.aliases].some((n) => n.toLowerCase().includes(query.toLowerCase())) || w.id.startsWith(query.toLowerCase()));
@@ -72,9 +75,9 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
   return (
     <div className="flex h-full shrink-0">
       {/* Icon rail */}
-      <nav className="flex w-[72px] flex-col items-center gap-3 border-r border-white/5 bg-black/30 py-5 backdrop-blur-xl">
-        <Link href="/" aria-label="SheetTwin" title="SheetTwin" className="mb-3 grid size-10 place-items-center rounded-xl bg-white/5 ring-1 ring-white/10 transition hover:bg-white/10">
-          <Sparkles className="size-5 text-violet-300" />
+      <nav className="flex w-[72px] flex-col items-center gap-3 border-r border-white/5 bg-black/30 py-5">
+        <Link href="/" aria-label="SheetTwin" title="SheetTwin" className="mb-3 grid size-10 place-items-center rounded-md transition hover:opacity-85">
+          <Logo className="size-9" />
         </Link>
         <RailButton label={t.nav.newData} onClick={onNewData} accent>
           <FilePlus2 className="size-5" />
@@ -101,7 +104,10 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
         <RailButton label={t.nav.charts} onClick={() => onView("charts")} active={view === "charts" && !panel}>
           <ChartPie className="size-5" />
         </RailButton>
-        <div className="mt-auto">
+        <div className="mt-auto flex flex-col gap-3">
+          <RailButton label={theme === "light" ? t.nav.toDark : t.nav.toLight} onClick={toggleTheme}>
+            {theme === "light" ? <Moon className="size-5" /> : <Sun className="size-5" />}
+          </RailButton>
           <RailButton label={`${t.nav.language}: ${t.toggle}`} onClick={() => setLang(lang === "zh" ? "en" : "zh")}>
             <span className="flex flex-col items-center leading-none">
               <Languages className="size-4" />
@@ -112,15 +118,15 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
       </nav>
 
       {/* Workbook list */}
-      <aside className={`${view === "graph" || view === "sheets" ? "md:hidden" : "md:flex"} hidden w-72 flex-col border-r border-white/5 bg-white/[0.02] backdrop-blur-xl`}>
+      <aside className={`${view === "graph" || view === "sheets" ? "md:hidden" : "md:flex"} hidden w-72 flex-col border-r border-white/5 bg-white/[0.02]`}>
         <div className="px-5 pb-3 pt-6">
           <h1 className="text-lg font-semibold tracking-tight">
-            <span className="text-gradient">SheetTwin</span>
+            <span className="text-accent">SheetTwin</span>
           </h1>
           <p className="mt-0.5 text-xs text-zinc-500">{t.sidebar.tagline}</p>
         </div>
         <div className="px-4">
-          <label className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-zinc-400 focus-within:border-violet-400/40">
+          <label className="flex items-center gap-2 rounded-md border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-zinc-400 focus-within:border-blue-400/40">
             <Search className="size-4" />
             <input
               value={query}
@@ -144,12 +150,12 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
             const open = expanded.has(key);
             return (
               <li key={key}>
-                <div className={`group relative flex w-full items-center rounded-xl transition-colors
+                <div className={`group relative flex w-full items-center rounded-md transition-colors
                     ${active ? "text-white" : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"}`}>
                   {active && (
                     <motion.span
                       layoutId="wb-active"
-                      className="absolute inset-0 rounded-xl bg-gradient-to-r from-violet-500/20 to-cyan-400/10 ring-1 ring-violet-400/30"
+                      className="absolute inset-0 rounded-md bg-blue-500/10 ring-1 ring-blue-400/30"
                       transition={{ type: "spring", stiffness: 400, damping: 32 }}
                     />
                   )}

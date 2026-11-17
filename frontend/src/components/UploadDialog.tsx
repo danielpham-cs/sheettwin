@@ -41,7 +41,7 @@ export function UploadDialog({ open, onClose, onDone }: Props) {
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -53,7 +53,7 @@ export function UploadDialog({ open, onClose, onDone }: Props) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
-            className="glow-border w-full max-w-lg rounded-3xl bg-zinc-950/90 p-6 shadow-2xl shadow-violet-900/30"
+            className="field w-full max-w-lg rounded-xl bg-zinc-950/90 p-6 shadow-2xl"
           >
             <div className="mb-5 flex items-start justify-between">
               <div>
@@ -71,20 +71,20 @@ export function UploadDialog({ open, onClose, onDone }: Props) {
               onDragOver={(e) => { e.preventDefault(); setOver(true); }}
               onDragLeave={() => setOver(false)}
               onDrop={(e) => { e.preventDefault(); setOver(false); upload(e.dataTransfer.files[0]); }}
-              className={`relative flex w-full flex-col items-center gap-3 overflow-hidden rounded-2xl border-2 border-dashed px-6 py-12 transition-all
-                ${over ? "scale-[1.01] border-violet-400 bg-violet-500/10" : "border-white/10 bg-white/[0.02] hover:border-violet-400/50 hover:bg-white/[0.04]"}`}
+              className={`relative flex w-full flex-col items-center gap-3 overflow-hidden rounded-lg border-2 border-dashed px-6 py-12 transition-all
+                ${over ? "border-blue-400 bg-blue-500/10" : "border-white/10 bg-white/[0.02] hover:border-blue-400/50 hover:bg-white/[0.04]"}`}
             >
               {busy ? (
                 <>
-                  <Loader2 className="size-10 animate-spin text-violet-300" />
+                  <Loader2 className="size-10 animate-spin text-blue-300" />
                   <span className="text-sm text-zinc-300">{busy}</span>
                 </>
               ) : (
                 <>
-                  <span className="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-violet-500/30 to-cyan-400/20 ring-1 ring-white/10">
-                    <UploadCloud className="size-7 text-violet-200" />
+                  <span className="grid size-14 place-items-center rounded-lg bg-blue-500/10 ring-1 ring-blue-400/20">
+                    <UploadCloud className="size-7 text-blue-200" />
                   </span>
-                  <span className="text-sm text-zinc-200">{t.upload.drop}<span className="text-violet-300">{t.upload.choose}</span></span>
+                  <span className="text-sm text-zinc-200">{t.upload.drop}<span className="text-blue-300">{t.upload.choose}</span></span>
                   <span className="text-xs text-zinc-500">{t.upload.hint}</span>
                 </>
               )}
@@ -92,7 +92,7 @@ export function UploadDialog({ open, onClose, onDone }: Props) {
             <input ref={input} type="file" accept=".xlsx,.xlsm,.xls,.ods,.csv,.tsv" hidden onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
 
             {error && (
-              <p className="mt-3 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>
+              <p className="mt-3 rounded-md border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>
             )}
 
             <div className="mt-5 flex items-center gap-3">
@@ -103,7 +103,7 @@ export function UploadDialog({ open, onClose, onDone }: Props) {
             <button
               disabled={!!busy}
               onClick={() => run(t.upload.sampling, api.sample)}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] py-2.5 text-sm text-zinc-200 transition hover:border-cyan-300/40 hover:bg-cyan-400/5 disabled:opacity-50"
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.03] py-2.5 text-sm text-zinc-200 transition hover:border-cyan-300/40 hover:bg-cyan-400/5 disabled:opacity-50"
             >
               <FlaskConical className="size-4 text-cyan-300" />
               {t.upload.sample}

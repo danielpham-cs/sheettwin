@@ -170,7 +170,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
     <div className="flex min-h-0 flex-1 gap-4 p-4 md:p-6">
       <section className="flex min-w-0 flex-1 flex-col">
         {summary.stale && (
-          <div className="mb-3 flex items-center gap-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-100">
+          <div className="mb-3 flex items-center gap-3 rounded-md border border-amber-400/20 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-100">
             <AlertTriangle className="size-4 shrink-0" />
             <span className="flex-1">{t.sheets.stale}</span>
             <button onClick={reparse} disabled={reparsing}
@@ -185,20 +185,20 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
           <div className="flex flex-wrap gap-1">
             {sheets.map((s) => (
               <button key={s} onClick={() => { setSheet(s); setSelected(null); setFocusTable(null); stopEditing(); }}
-                className={`rounded-lg px-3 py-1 text-sm transition ${s === sheet ? "bg-violet-500/25 text-white ring-1 ring-violet-400/40" : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"}`}>
+                className={`rounded-lg px-3 py-1 text-sm transition ${s === sheet ? "bg-blue-500/25 text-white ring-1 ring-blue-400/40" : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"}`}>
                 {s}
               </button>
             ))}
           </div>
           <button onClick={editing ? stopEditing : startEditing} disabled={!sd} title={t.sheets.edit.startHint}
-            className={`ml-auto flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs ring-1 transition ${editing ? "bg-violet-500/25 text-white ring-violet-400/40" : "text-zinc-300 ring-white/10 hover:bg-white/5"}`}>
+            className={`ml-auto flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs ring-1 transition ${editing ? "bg-blue-500/25 text-white ring-blue-400/40" : "text-zinc-300 ring-white/10 hover:bg-white/5"}`}>
             <PencilRuler className="size-3.5" />{t.sheets.edit.start}
           </button>
           <label className="flex items-center gap-1.5 text-xs text-zinc-400">
-            <input type="checkbox" checked={showFormulas} onChange={(e) => setShowFormulas(e.target.checked)} className="accent-violet-500" />
+            <input type="checkbox" checked={showFormulas} onChange={(e) => setShowFormulas(e.target.checked)} className="accent-blue-500" />
             {t.sheets.formulas}
           </label>
-          <div className="flex rounded-xl border border-white/10 bg-white/[0.03] p-0.5">
+          <div className="flex rounded-md border border-white/10 bg-white/[0.03] p-0.5">
             {(["structure", "roles"] as const).map((m) => (
               <button key={m} onClick={() => setMode(m)} title={m === "structure" ? t.sheets.structureHint : t.sheets.rolesHint}
                 className={`rounded-lg px-3 py-1 text-xs transition ${mode === m ? "bg-white/10 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>
@@ -219,7 +219,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
                   <span className="size-2 rounded-full" style={{ background: tableColor(tb) }} />
                   {tb.name}
                   <span className="text-zinc-500">{rangeA1(tb)} · {t.sheets.rows(tb.row_end - tb.row_start + 1)}</span>
-                  {tb.source === "user" && <span className="rounded bg-violet-500/20 px-1 text-[10px] text-violet-200">{t.sheets.edit.edited}</span>}
+                  {tb.source === "user" && <span className="rounded bg-blue-500/20 px-1 text-[10px] text-blue-200">{t.sheets.edit.edited}</span>}
                 </button>
               ))}
             </>
@@ -228,7 +228,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
 
         <Legend mode={mode} />
 
-        <div ref={gridRef} className={`sgrid min-h-0 flex-1 overflow-auto rounded-2xl border bg-[#141419]/90 ${editing ? "editing border-violet-400/40" : "border-white/[0.07]"}`}>
+        <div ref={gridRef} className={`sgrid min-h-0 flex-1 overflow-auto rounded-lg border bg-surface/90 ${editing ? "editing border-blue-400/40" : "border-white/[0.07]"}`}>
           {error && <p className="p-4 text-sm text-rose-300">{error}</p>}
           {!sd && !error && <div className="grid h-40 place-items-center"><Loader2 className="size-5 animate-spin text-zinc-500" /></div>}
           {sd && grid && (
@@ -274,7 +274,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
         </div>
       </section>
 
-      <aside className="hidden w-[380px] shrink-0 overflow-y-auto rounded-2xl border border-white/[0.07] bg-[#141419]/90 p-5 text-sm lg:block">
+      <aside className="hidden w-[380px] shrink-0 overflow-y-auto rounded-lg border border-white/[0.07] bg-surface/90 p-5 text-sm lg:block">
         {editing && sd && draft ? (
           <TableEditor sheet={sheet!} draft={draft} declared={sd.tables.filter((x) => x.source === "listobject")} selection={sel}
             edited={edited} saving={saving} error={editError}
@@ -388,7 +388,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function CellLink({ id, onCell, children }: { id: string; onCell: (id: string) => void; children?: React.ReactNode }) {
-  return <button onClick={() => onCell(id)} className="font-mono text-[12.5px] text-violet-300 hover:text-violet-200 hover:underline">{children ?? id}</button>;
+  return <button onClick={() => onCell(id)} className="font-mono text-[12.5px] text-blue-300 hover:text-blue-200 hover:underline">{children ?? id}</button>;
 }
 
 function whereText(t: ReturnType<typeof useI18n>["t"], c: SheetCell, sd: SheetData) {
@@ -419,9 +419,9 @@ function CellInspector({ detail, sheet, onCell, onTraceGraph, onAsk, onResolve }
         <h3 className="font-mono text-base font-semibold text-white">{c.cell_id}</h3>
         <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-zinc-400 ring-1 ring-white/10">{roleLabel}</span>
       </div>
-      <p className="mt-1 break-all font-mono text-[12.5px] text-violet-300">{c.semantic || "—"}</p>
+      <p className="mt-1 break-all font-mono text-[12.5px] text-blue-300">{c.semantic || "—"}</p>
       {c.vtype && (
-        <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-200">
+        <p className="mt-3 rounded-md bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-200">
           {tb && <span className="mr-1.5 inline-block size-2 rounded-full align-middle" style={{ background: tableColor(tb) }} />}
           {whereText(t, c, sheet)}
         </p>
@@ -518,8 +518,8 @@ function TableInspector({ table, sheet, onCell }: { table: TableInfo; sheet: str
         <Table2 className="size-4" style={{ color: tableColor(table) }} />
         <h3 className="text-base font-semibold text-white">{table.name}</h3>
       </div>
-      <p className="mt-1 font-mono text-[12.5px] text-violet-300">{sheet}!{rangeA1(table)}</p>
-      <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-200">
+      <p className="mt-1 font-mono text-[12.5px] text-blue-300">{sheet}!{rangeA1(table)}</p>
+      <p className="mt-3 rounded-md bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-200">
         {table.source === "listobject" ? s.listobject : table.source === "user" ? s.user : s.detected(table.confidence)}
         {table.kind === "parameter_list" ? ` ${s.paramList}` : ""}
       </p>

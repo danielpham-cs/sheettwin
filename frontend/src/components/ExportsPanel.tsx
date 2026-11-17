@@ -11,12 +11,12 @@ import { api, formatSize, type DiffResult, type ExportFile, type Workbook } from
 import { useI18n } from "@/lib/i18n";
 
 const FORMAT_STYLE: Record<string, { icon: typeof Database; tint: string }> = {
-  XLSX: { icon: FileSpreadsheet, tint: "from-emerald-500/30 to-emerald-400/5 text-emerald-300" },
-  SQLite: { icon: Database, tint: "from-violet-500/30 to-violet-400/5 text-violet-300" },
-  JSON: { icon: Braces, tint: "from-amber-500/30 to-amber-400/5 text-amber-300" },
-  CSV: { icon: Sheet, tint: "from-cyan-500/30 to-cyan-400/5 text-cyan-300" },
-  HTML: { icon: FileCode2, tint: "from-rose-500/30 to-rose-400/5 text-rose-300" },
-  Markdown: { icon: FileText, tint: "from-sky-500/30 to-sky-400/5 text-sky-300" },
+  XLSX: { icon: FileSpreadsheet, tint: "text-emerald-300" },
+  SQLite: { icon: Database, tint: "text-blue-300" },
+  JSON: { icon: Braces, tint: "text-amber-300" },
+  CSV: { icon: Sheet, tint: "text-cyan-300" },
+  HTML: { icon: FileCode2, tint: "text-rose-300" },
+  Markdown: { icon: FileText, tint: "text-sky-300" },
 };
 
 const PREVIEWABLE = new Set(["JSON", "CSV", "Markdown"]);
@@ -100,7 +100,7 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -24, opacity: 0 }}
             transition={{ type: "spring", stiffness: 380, damping: 34 }}
-            className="absolute inset-y-0 left-[72px] z-40 flex w-[min(440px,calc(100vw-72px))] flex-col border-r border-white/10 bg-zinc-950/85 shadow-2xl shadow-black/60 backdrop-blur-2xl"
+            className="absolute inset-y-0 left-[72px] z-40 flex w-[min(440px,calc(100vw-72px))] flex-col border-r border-white/10 bg-zinc-950/85 shadow-2xl shadow-black/60"
           >
             <header className="flex items-start justify-between px-6 pb-4 pt-6">
               <div className="min-w-0">
@@ -117,10 +117,10 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
             <div className="flex-1 space-y-2 overflow-y-auto px-4 pb-6">
               {!workbookId && <p className="px-2 py-10 text-center text-sm text-zinc-500">{t.exports.none}</p>}
               {workbook && <SourceCard key={workbook.id} workbook={workbook} versions={versions} onOpenCell={onOpenCell} />}
-              {error && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>}
+              {error && <p className="rounded-md bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>}
               {workbookId && !files && !error &&
                 Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="h-[68px] animate-shimmer rounded-2xl bg-[linear-gradient(90deg,rgb(255_255_255/0.03),rgb(255_255_255/0.07),rgb(255_255_255/0.03))] bg-[length:200%_100%]" />
+                  <div key={i} className="h-[68px] animate-shimmer rounded-lg bg-[linear-gradient(90deg,color-mix(in_srgb,var(--color-white)_3%,transparent),color-mix(in_srgb,var(--color-white)_7%,transparent),color-mix(in_srgb,var(--color-white)_3%,transparent))] bg-[length:200%_100%]" />
                 ))}
               {files?.map((f, i) => {
                 const style = FORMAT_STYLE[f.format] ?? FORMAT_STYLE.CSV;
@@ -131,9 +131,9 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.04 }}
-                    className="group flex items-center gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-3 transition hover:border-white/10 hover:bg-white/[0.06]"
+                    className="group flex items-center gap-3 rounded-lg border border-white/5 bg-white/[0.03] p-3 transition hover:border-white/10 hover:bg-white/[0.06]"
                   >
-                    <span className={`grid size-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br ring-1 ring-white/10 ${style.tint}`}>
+                    <span className={`grid size-11 shrink-0 place-items-center rounded-md bg-white/[0.04] ring-1 ring-white/10 ${style.tint}`}>
                       <Icon className="size-5" />
                     </span>
                     <span className="min-w-0 flex-1">
@@ -184,7 +184,7 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
       <AnimatePresence>
         {preview && (
           <motion.div
-            className="fixed inset-0 z-[60] grid place-items-center bg-black/70 p-4 backdrop-blur-sm sm:p-8"
+            className="fixed inset-0 z-[60] grid place-items-center bg-black/70 p-4 sm:p-8"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -195,7 +195,7 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
               initial={{ scale: 0.96, y: 10 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.97, y: 6 }}
-              className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 shadow-2xl"
+              className="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-950 shadow-2xl"
             >
               <header className="flex items-center justify-between border-b border-white/5 px-6 py-4">
                 <div>
@@ -273,7 +273,7 @@ function SourceCard({ workbook: w, versions, onOpenCell }: { workbook: Workbook;
   );
 
   return (
-    <div className="mb-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs">
+    <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.03] p-4 text-xs">
       <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">{s.title}</div>
       <div className="flex items-center gap-2">
         <FileSpreadsheet className="size-4 shrink-0 text-emerald-300" />
@@ -284,7 +284,7 @@ function SourceCard({ workbook: w, versions, onOpenCell }: { workbook: Workbook;
       <dl className="mt-3 grid grid-cols-[96px_1fr] gap-x-3 gap-y-1.5">
         {row(s.sha, (
           <span className="flex items-center gap-1.5">
-            <span className="truncate font-mono text-[11px]" title={w.sha256}><b className="font-semibold text-violet-200">{w.sha256.slice(0, 12)}</b>{w.sha256.slice(12)}</span>
+            <span className="truncate font-mono text-[11px]" title={w.sha256}><b className="font-semibold text-blue-200">{w.sha256.slice(0, 12)}</b>{w.sha256.slice(12)}</span>
             <button onClick={() => { navigator.clipboard?.writeText(w.sha256); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
               title={copied ? s.copied : s.copy} className="shrink-0 rounded p-0.5 text-zinc-500 hover:text-white">
               {copied ? <Check className="size-3.5 text-emerald-300" /> : <Copy className="size-3.5" />}
@@ -324,7 +324,7 @@ function SourceCard({ workbook: w, versions, onOpenCell }: { workbook: Workbook;
                 <li key={c.cell_id} className="flex items-baseline gap-2">
                   {c.change === "removed"
                     ? <span className="font-mono text-zinc-500 line-through">{c.cell_id}</span>
-                    : <button onClick={() => onOpenCell(c.cell_id)} className="font-mono text-violet-300 hover:underline">{c.cell_id}</button>}
+                    : <button onClick={() => onOpenCell(c.cell_id)} className="font-mono text-blue-300 hover:underline">{c.cell_id}</button>}
                   <span className={c.change === "added" ? "text-emerald-300" : c.change === "removed" ? "text-rose-300" : "text-amber-200"}>{s.kinds[c.change]}</span>
                   <span className="min-w-0 truncate font-mono text-[11px] text-zinc-500" title={`${c.old ?? ""} → ${c.new ?? ""}`}>
                     {c.change === "changed" ? `${c.old} → ${c.new}` : c.new ?? c.old}
