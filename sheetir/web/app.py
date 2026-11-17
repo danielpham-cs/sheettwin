@@ -48,6 +48,7 @@ from ..store import IR_SCHEMA, TRACE_SQL
 from ..understand import ask
 from ..verify import NOT_UNDERSTOOD
 from . import graph, provenance
+from .basepath import BasePathMiddleware
 from .charts import charts
 from .chat import answer, find_cells
 
@@ -58,6 +59,7 @@ MAX_SQL_ROWS = 500
 MAX_LAYOUT_CELLS = 30_000  # per sheet, for the overview minimaps
 
 app = FastAPI(title="SheetTwin · SheetIR")
+app.add_middleware(BasePathMiddleware)  # UI behind a proxy prefix (see basepath.py)
 log = logging.getLogger("sheetir.web")
 
 
