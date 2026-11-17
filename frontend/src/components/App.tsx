@@ -12,7 +12,7 @@ import { ResolveDialog, type ResolveTarget } from "@/components/ResolveDialog";
 import { StructureView } from "@/components/StructureView";
 import { Sidebar, type View } from "@/components/Sidebar";
 import { UploadDialog } from "@/components/UploadDialog";
-import { api, type IngestResult, type Summary, type Workbook } from "@/lib/api";
+import { api, type AgentStep, type IngestResult, type LlmStatus, type Summary, type Workbook } from "@/lib/api";
 import { I18nProvider, useI18n } from "@/lib/i18n";
 import { FileSpreadsheet } from "lucide-react";
 
@@ -43,6 +43,8 @@ function Shell() {
   const [loaded, setLoaded] = useState<Summary | null>(null);
   const [chats, setChats] = useState<Record<string, Message[]>>(loadChats);
   const [pending, setPending] = useState(false);
+  const [liveSteps, setLiveSteps] = useState<AgentStep[]>([]);
+  const [llm, setLlm] = useState<LlmStatus | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [panel, setPanel] = useState<"exports" | null>(null);
   const [view, setView] = useState<View>("chat");
@@ -129,17 +131,24 @@ function Shell() {
     const push = (m: Message) => setChats((c) => ({ ...c, [wid]: [...(c[wid] ?? []), m] }));
     push({ id: uid(), role: "user", content: text });
     setPending(true);
+    setLiveSteps([]);
     try {
-      // Short floor so the typing indicator reads as a reply, not a flicker.
-      const [res] = await Promise.all([api.chat(wid, text, lang), new Promise((r) => setTimeout(r, 450))]);
+      // Steps arrive as the agent takes them; a short floor keeps the typing indicator from flickering.
+      const stream = api.chatStream(wid, text, lang, (s) => setLiveSteps((prev) => [...prev, s]));
+      const [res] = await Promise.all([stream, new Promise((r) => setTimeout(r, 450))]);
       const { reply, cells, ...meta } = res;
       push({ id: uid(), role: "assistant", content: reply, cells, meta });
     } catch (e) {
       push({ id: uid(), role: "assistant", content: t.app.error((e as Error).message), error: true });
     } finally {
       setPending(false);
+      setLiveSteps([]);
     }
   }
+
+  useEffect(() => {
+    api.llm().then(setLlm).catch(() => setLlm(null));
+  }, []);
 
   return (
     <div className="relative flex h-full overflow-hidden">
@@ -253,9 +262,12 @@ function Shell() {
             summary={summary}
             messages={(activeId && chats[activeId]) || []}
             pending={pending}
+            liveSteps={liveSteps}
+            llm={llm}
             onSend={send}
             onNewData={() => setUploadOpen(true)}
             onShowGraph={(cell) => { setGraphFocus(cell); setView("graph"); }}
+            onOpenSource={(cell) => { setSheetFocus(cell); setView("sheets"); }}
             onNavigate={(to) => (to === "exports" ? setPanel("exports") : setView(to))}
             onShowReport={() => setReportOpen(true)}
           />

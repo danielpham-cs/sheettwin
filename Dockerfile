@@ -20,12 +20,13 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY sheetir/ ./sheetir/
+COPY config/ ./config/
 RUN uv sync --frozen --no-dev
 COPY --from=ui /src/sheetir/web/static/app ./sheetir/web/static/app
 
 RUN useradd --create-home --uid 1000 sheettwin && mkdir /data && chown sheettwin /data
 USER sheettwin
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" SHEETIR_LOG_DIR=/data/.logs
 VOLUME /data
 EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \

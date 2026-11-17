@@ -416,7 +416,10 @@ def _build(src: Path, book: Path, notes: list[str], db_path: str | Path, table_s
         "edges": edges,
         "literals": [(addr(*ck), v, fn) for ck, pf in parsed.items() for v, fn in pf.literals],
         "tables": [(t.table_id, t.sheet, t.name, t.kind, t.source, t.header_row, t.row_start, t.row_end,
-                    t.c1, t.c2, t.key_col, t.total_row, t.header_top, t.confidence) for t in tables],
+                    t.c1, t.c2, t.key_col, t.total_row, t.header_top, t.confidence, dumps(t.gap_rows))
+                   for t in tables],
+        "merges": [(s, ref) for s, ref in raw.merged],
+        "filters": [(s, ref) for s, ref in raw.filters],
         "fields": [(None, t.table_id, f.col, f.header, f.name, f.unit, f.kind, f.key, f.number_format)
                    for t in tables for f in t.fields],
         "params": params,

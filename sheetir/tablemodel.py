@@ -22,7 +22,10 @@ from pathlib import Path
 
 from .loader import CellKey, RawCell
 
-_TOTAL_RE = re.compile(r"\b(total|sum|subtotal|grand total)\b|合計|總計|小計|总计|合计", re.I)
+# Total and subtotal labels. Vietnamese words only at the start of the cell ("Tổng cộng", "Cộng", "Tong"), since "cộng"
+# also occurs inside ordinary text.
+_TOTAL_RE = re.compile(r"\b(total|sum|subtotal|grand total)\b|合計|總計|小計|总计|合计"
+                       r"|^\s*(tổng|tong|cộng|cong)(\s+(cộng|cong|số|so))?\b", re.I)
 HEADER_MARKS = frozenset({"bold", "fill", "border_bottom"})
 MODEL_DIR = Path(__file__).with_name("models")
 

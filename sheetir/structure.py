@@ -16,10 +16,9 @@ from openpyxl.utils import range_boundaries
 from .loader import CellKey, RawCell, RawWorkbook
 from .refs import Ref, parse_ref
 from .tablemodel import (
-    HEADER_MARKS, Grid, block_features, default_scorer, header_features, is_label, is_value, year_cols,
+    _TOTAL_RE, HEADER_MARKS, Grid, block_features, default_scorer, header_features, is_label, is_value, year_cols,
 )
 
-_TOTAL_RE = re.compile(r"\b(total|sum|subtotal|grand total)\b|合計|總計|小計|总计|合计", re.I)
 _UNIT_RE = re.compile(r"\s*[\(（\[]([^\)）\]]*)[\)）\]]\s*")
 
 
@@ -257,6 +256,15 @@ def detect_tables(raw: RawWorkbook, refs_of: dict[CellKey, list],
             t.table_id = len(tables) + 1
             claim(t)
 
+    # AutoFilter ranges and named ranges (design §6.3.1): a header row the author marked, then its body
+    for sheet, ref, source, name, conf in _declared_ranges(raw):
+        if sheet in user_tables:
+            continue
+        t = _range_table(at, sheet, ref, source, name, conf, claimed, refs_of)
+        if t is not None:
+            t.table_id = len(tables) + 1
+            claim(t)
+
     for sheet in raw.sheets:
         if sheet in user_tables:
             continue
@@ -286,14 +294,63 @@ def detect_tables(raw: RawWorkbook, refs_of: dict[CellKey, list],
     taken: set[str] = set()
     per_sheet = Counter(t.sheet for t in tables)
     for t in tables:
-        base = (t.name if t.source == "listobject" else split_label(t.name)[0] if t.source == "user" and t.name
+        base = (t.name if t.source == "listobject"
+                else split_label(t.name)[0] if t.source in ("user", "named_range") and t.name
                 else split_label(t.sheet)[0])
-        if t.source != "listobject" and per_sheet[t.sheet] > 1 and t.header_row:
+        if t.source not in ("listobject", "named_range") and per_sheet[t.sheet] > 1 and t.header_row:
             first = at(t.sheet, t.header_row, t.c1)
             base = f"{base}_{split_label(str(first.value))[0]}" if first else base
         t.name = unique(base, taken)
         _describe_table(t, at)
     return tables
+
+
+def _declared_ranges(raw: RawWorkbook):
+    """(sheet, ref, source, name, confidence) of the ranges the author declared as data: each sheet's AutoFilter, then
+    defined names covering a block of at least 3 rows and 2 columns. Excel's own names (_xlnm.*) are skipped."""
+    for sheet, ref in raw.filters:
+        yield sheet, ref, "autofilter", "", 0.9
+    for n in raw.names:
+        if n.name.lower().startswith("_xlnm") or not n.refers_to:
+            continue
+        r = parse_ref(n.refers_to.lstrip("="))
+        if (r is None or r.sheet not in raw.sheets or (n.scope and n.scope != r.sheet)
+                or None in (r.r1, r.c1, r.r2, r.c2) or r.r2 - r.r1 < 2 or r.c2 == r.c1):
+            continue
+        yield r.sheet, r.a1(host=r.sheet), "named_range", n.name, 0.85
+
+
+def _range_table(at, sheet, ref, source, name, conf, claimed, refs_of) -> Table | None:
+    """A table whose header is the first row of a declared range. A range of the header row alone (an AutoFilter often
+    is) extends down over the body as a detected table would. None when the range overlaps a table already found or
+    its first row is not a header (mostly labels)."""
+    try:
+        c1, r1, c2, r2 = range_boundaries(ref.split("!")[-1].replace("$", ""))
+    except (ValueError, TypeError):
+        return None
+    if c1 is None or r1 is None or c2 - c1 < 1:
+        return None
+    cols = list(range(c1, c2 + 1))
+    if any((sheet, r, c) in claimed for r in range(r1, r2 + 1) for c in cols):
+        return None
+    head = [at(sheet, r1, c) for c in cols]
+    filled = [c for c in head if c is not None]
+    if len(filled) < 2 or sum(c.vtype in ("text", "date") for c in filled) * 2 < len(filled):
+        return None
+    if r2 > r1:
+        end = r2
+        while end > r1 and all(at(sheet, end, c) is None for c in cols):
+            end -= 1
+    else:
+        end, _ = _extend_body(at, sheet, r1, cols, claimed)
+    gaps = [r for r in range(r1 + 1, end + 1) if all(at(sheet, r, c) is None for c in cols)]
+    total = None
+    if end > r1 + 1 and _is_total_row(at, sheet, end, r1 + 1, c1, c2, refs_of):
+        total, end = end, end - 1
+    if end - r1 - len([g for g in gaps if g <= end]) < 1:
+        return None
+    return Table(0, sheet, name, source, r1, r1 + 1, end, c1, c2, total_row=total,
+                 gap_rows=[g for g in gaps if g <= end], confidence=conf)
 
 
 def _extend_body(at, sheet, row, run, claimed) -> tuple[int, list[int]]:

@@ -66,6 +66,7 @@ class RawWorkbook:
     validations: list[Validation]
     merged: list[tuple[str, str]]
     warnings: list[str] = field(default_factory=list)  # e.g. "styles_dropped": formatting unreadable, ignored
+    filters: list[tuple[str, str]] = field(default_factory=list)  # (sheet, ref) of each sheet's AutoFilter
 
 
 class WorkbookError(Exception):
@@ -150,6 +151,7 @@ def load(path: str | Path) -> RawWorkbook:
     tables: list[TableDef] = []
     validations: list[Validation] = []
     merged: list[tuple[str, str]] = []
+    filters: list[tuple[str, str]] = []
     names: list[DefinedName] = [DefinedName(n, None, d.attr_text) for n, d in wb_f.defined_names.items()]
 
     for ws in wb_f.worksheets:
@@ -195,5 +197,7 @@ def load(path: str | Path) -> RawWorkbook:
             validations.append(Validation(ws.title, str(dv.sqref), rule))
         merged.extend((ws.title, str(r)) for r in ws.merged_cells.ranges)
         names.extend(DefinedName(n, ws.title, d.attr_text) for n, d in ws.defined_names.items())
+        if ws.auto_filter is not None and ws.auto_filter.ref:
+            filters.append((ws.title, str(ws.auto_filter.ref)))
 
-    return RawWorkbook(path, sha, wb_f.sheetnames, cells, names, tables, validations, merged, warnings)
+    return RawWorkbook(path, sha, wb_f.sheetnames, cells, names, tables, validations, merged, warnings, filters)

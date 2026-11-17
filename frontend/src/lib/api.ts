@@ -77,6 +77,7 @@ export type Summary = {
   verification?: Verification | null;
   load_warnings?: string[]; // e.g. "styles_dropped": the formatting part was unreadable and ignored
   user_tables?: Record<string, TableSpec[]>; // sheets whose tables the user defined
+  catalog?: CatalogBrief; // clean tables, families and cards the query agent works from
 };
 
 /** A table the user defined: its range, how many of its first rows are the header, whether the last is a total. */
@@ -164,18 +165,63 @@ export type SqlResult = { columns: string[]; rows: unknown[][]; truncated: boole
 
 export type ExportFile = { name: string; label: string; format: string; size: number; source: boolean };
 
-/** `source` says who answered: the language model (grounded in the IR) or the built-in rules. */
+/** One step of the query agent: the tool it chose, why, and what came back (rows cut for display). */
+export type AgentStep = {
+  n: number;
+  thought: string;
+  tool: "search_catalog" | "describe_table" | "run_sql" | "make_chart" | "final_answer" | string;
+  args: Record<string, unknown>;
+  result: Record<string, unknown>;
+  seconds: number;
+};
+
+/** A chart the agent made from a query result (sheetir.agent.tools.make_chart). */
+export type AgentChart = {
+  chart_id: string;
+  type: "bar" | "line" | "pie" | "scatter";
+  x: string;
+  y: string[];
+  title: string;
+  data: Record<string, unknown>[];
+  truncated?: boolean;
+};
+
+export type AgentResult = { result_id: string; sql: string; columns: string[]; rows: unknown[][]; row_count: number; truncated: boolean };
+
+/** A sheet and range an answer was read from. */
+export type Provenance = { sheet: string; range: string; table_title?: string; card_id?: string };
+
+/** `source` says who answered: the query agent over the catalog, the language model grounded in the IR, or the
+ * built-in rules. */
 export type ChatReply = {
   reply: string;
   cells: string[];
-  source?: "llm" | "rules";
+  source?: "llm" | "rules" | "agent";
   model?: string;
   sql?: string | null;
   grounded?: boolean;
   ungrounded?: string[];
   /** Set when the model failed and the rules answered instead: why. */
   fallback?: string;
+  steps?: AgentStep[];
+  results?: AgentResult[];
+  chart?: AgentChart | null;
+  provenance?: Provenance[];
+  stopped?: string | null;
+  seconds?: number;
 };
+
+export type CatalogBrief = {
+  built: boolean;
+  error?: string | null;
+  model?: string | null;
+  stats?: { tables: number; rule_tables: number; llm_tables: number; low_confidence: number; families: number;
+    family_tabs: number; relations: number; cards: number; rows: number; formulas_computed?: number };
+  cards?: { card_id: string; sql_name: string; title: string; row_count: number; time_coverage: string | null;
+    low_confidence: boolean; sheets: string[]; warnings: number }[];
+};
+
+export type LlmStatus = { enabled: boolean; model: string | null; endpoint: string | null; reason: string | null; local: boolean };
 
 export type NodeKind = "param" | "input" | "formula" | "output";
 
@@ -272,6 +318,33 @@ export const api = {
   remove: (id: string) => call<{ deleted: string }>(`/api/workbooks/${id}`, { method: "DELETE" }),
   diff: (id: string, against: string) => call<DiffResult>(`/api/workbooks/${id}/diff?against=${encodeURIComponent(against)}`),
   chat: (id: string, message: string, lang: string) => call<ChatReply>(`/api/workbooks/${id}/chat`, json({ message, lang })),
+  /** The same answer as `chat`, with each agent step passed to `onStep` as it finishes (server-sent events). */
+  chatStream: async (id: string, message: string, lang: string, onStep: (s: AgentStep) => void): Promise<ChatReply> => {
+    const res = await fetch(`/api/workbooks/${id}/chat/stream`, json({ message, lang }));
+    if (!res.ok || !res.body) throw new ApiError(`${res.status} ${res.statusText}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+      let cut: number;
+      while ((cut = buffer.indexOf("\n\n")) >= 0) {
+        const block = buffer.slice(0, cut);
+        buffer = buffer.slice(cut + 2);
+        const event = /^event: (.*)$/m.exec(block)?.[1];
+        const data = /^data: (.*)$/m.exec(block)?.[1];
+        if (!event || data === undefined) continue;
+        const body = JSON.parse(data);
+        if (event === "step") onStep(body as AgentStep);
+        else if (event === "final") return body as ChatReply;
+        else if (event === "error") throw new ApiError(String(body.error));
+      }
+      if (done) throw new ApiError("the answer stream ended early");
+    }
+  },
+  llm: () => call<LlmStatus>("/api/llm"),
+  catalog: (id: string) => call<CatalogBrief>(`/api/workbooks/${id}/catalog`),
   graph: (id: string, cell?: string) =>
     call<GraphData>(`/api/workbooks/${id}/graph${cell ? `?cell=${encodeURIComponent(cell)}` : ""}`),
   charts: (id: string) => call<ChartData>(`/api/workbooks/${id}/charts`),

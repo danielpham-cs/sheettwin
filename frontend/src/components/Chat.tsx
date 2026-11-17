@@ -1,16 +1,33 @@
 "use client";
 
 import {
-  AlertTriangle, ArrowUp, Bot, ChartPie, CircleCheck, Crosshair, Database, FolderOutput, Grid3x3, ListTree, Lock, MessageSquareText, Network,
-  Settings2, Sparkles, Table2, User,
+  AlertTriangle, ArrowUp, Bot, ChartLine, ChartPie, CircleCheck, Cloud, Crosshair, Database, FileSpreadsheet, FolderOutput, Grid3x3,
+  ListTree, Lock, MessageSquareText, Network, Search, Settings2, Sparkles, Table2, User, WifiOff,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatReply, Summary } from "@/lib/api";
+import {
+  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Scatter, ScatterChart,
+  Tooltip, XAxis, YAxis,
+} from "recharts";
+import type { AgentChart, AgentStep, ChatReply, LlmStatus, Provenance, Summary } from "@/lib/api";
 import { StatusBadge } from "@/components/ParseStatus";
 import { useI18n } from "@/lib/i18n";
+
+// Same categorical palette as the charts view (validated against the card surface).
+const CAT = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
+const INK = { secondary: "#c3c2b7", muted: "#898781", grid: "#2c2c2a" };
+const TOOL_ICONS: Record<string, typeof Search> = {
+  search_catalog: Search, describe_table: Table2, run_sql: Database, make_chart: ChartLine, final_answer: CircleCheck,
+};
+
+/** "Sheet!A1" for the first cell of a source range, quoted when the sheet name needs it. */
+function firstCell(p: Provenance) {
+  const sheet = /^[A-Za-z_][\w.]*$/.test(p.sheet) ? p.sheet : `'${p.sheet.replace(/'/g, "''")}'`;
+  return `${sheet}!${p.range.split(":")[0]}`;
+}
 
 export type Message = {
   id: string;
@@ -106,6 +123,140 @@ function ReplyMeta({ meta }: { meta: NonNullable<Message["meta"]> }) {
   );
 }
 
+/** One agent step on a line: its tool, the thought, and for a query its SQL and how many rows came back. */
+function StepLine({ step }: { step: AgentStep }) {
+  const { t } = useI18n();
+  const Icon = TOOL_ICONS[step.tool] ?? Sparkles;
+  const err = step.result?.error as string | undefined;
+  const sql = step.tool === "run_sql" ? String(step.args.sql ?? "") : null;
+  const detail = step.tool === "search_catalog" ? String(step.args.query ?? "")
+    : step.tool === "describe_table" ? String(step.args.card_id ?? "") : null;
+  const rows = typeof step.result?.row_count === "number" ? (step.result.row_count as number) : null;
+  return (
+    <li className="flex gap-2.5">
+      <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md ${err ? "bg-amber-500/15 text-amber-300" : "bg-white/5 text-cyan-300"}`}>
+        <Icon className="size-3" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-zinc-300">
+          <b className="font-medium text-zinc-100">{t.chat.agent.tools[step.tool] ?? step.tool}</b>
+          {detail && <span className="text-zinc-500"> · {detail}</span>}
+          {rows !== null && <span className="text-zinc-500"> · {t.chat.agent.rows(rows)}</span>}
+          <span className="text-zinc-600"> · {step.seconds}s</span>
+        </p>
+        {step.thought && <p className="text-zinc-500">{step.thought}</p>}
+        {sql && <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded-md bg-black/40 p-2 font-mono text-[11px] text-zinc-300">{sql}</pre>}
+        {err && <p className="mt-1 text-amber-300/90">{t.chat.agent.error}: {err}</p>}
+      </div>
+    </li>
+  );
+}
+
+function ChartBlock({ chart }: { chart: AgentChart }) {
+  const data = chart.data.map((d) => ({ ...d, [chart.x]: d[chart.x] === null ? "—" : String(d[chart.x]) }));
+  const axis = { stroke: INK.muted, tick: { fill: INK.secondary, fontSize: 11 } };
+  const tooltip = <Tooltip contentStyle={{ background: "#0b0b10", border: "1px solid rgba(255,255,255,.1)", borderRadius: 12, fontSize: 12 }} />;
+  let body: React.ReactElement;
+  if (chart.type === "pie") {
+    body = (
+      <PieChart>
+        <Pie data={data} dataKey={chart.y[0]} nameKey={chart.x} outerRadius="80%" innerRadius="45%" stroke="#141419">
+          {data.map((_, i) => <Cell key={i} fill={CAT[i % CAT.length]} />)}
+        </Pie>
+        {tooltip}<Legend wrapperStyle={{ fontSize: 11, color: INK.secondary }} />
+      </PieChart>
+    );
+  } else if (chart.type === "scatter") {
+    body = (
+      <ScatterChart>
+        <CartesianGrid stroke={INK.grid} strokeDasharray="3 3" />
+        <XAxis dataKey={chart.x} name={chart.x} {...axis} /><YAxis dataKey={chart.y[0]} name={chart.y[0]} {...axis} />
+        {tooltip}<Scatter data={data} fill={CAT[0]} />
+      </ScatterChart>
+    );
+  } else if (chart.type === "line") {
+    body = (
+      <LineChart data={data}>
+        <CartesianGrid stroke={INK.grid} strokeDasharray="3 3" vertical={false} />
+        <XAxis dataKey={chart.x} {...axis} /><YAxis {...axis} width={70} />
+        {tooltip}{chart.y.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
+        {chart.y.map((y, i) => <Line key={y} dataKey={y} stroke={CAT[i % CAT.length]} strokeWidth={2} dot={{ r: 2.5 }} />)}
+      </LineChart>
+    );
+  } else {
+    body = (
+      <BarChart data={data}>
+        <CartesianGrid stroke={INK.grid} strokeDasharray="3 3" vertical={false} />
+        <XAxis dataKey={chart.x} {...axis} /><YAxis {...axis} width={70} />
+        {tooltip}{chart.y.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
+        {chart.y.map((y, i) => <Bar key={y} dataKey={y} fill={CAT[i % CAT.length]} radius={[4, 4, 0, 0]} />)}
+      </BarChart>
+    );
+  }
+  return (
+    <div className="mt-4 rounded-2xl border border-white/[0.06] bg-[#141419]/80 p-3">
+      {chart.title && <p className="mb-2 text-sm font-medium text-zinc-200">{chart.title}</p>}
+      <div className="h-64 w-full"><ResponsiveContainer>{body}</ResponsiveContainer></div>
+    </div>
+  );
+}
+
+/** The agent's answer: model and number check, its chart, the sheets it read, and its steps. */
+function AgentMeta({ meta, onOpenSource }: { meta: NonNullable<Message["meta"]>; onOpenSource: (cell: string) => void }) {
+  const { t } = useI18n();
+  const steps = meta.steps ?? [];
+  return (
+    <>
+      {meta.chart && <ChartBlock chart={meta.chart} />}
+      <div className="mt-4 space-y-3 border-t border-white/5 pt-3 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="flex items-center gap-1.5 rounded-lg bg-violet-500/10 px-2 py-0.5 text-violet-200">
+            <Sparkles className="size-3.5" />{t.chat.ai(meta.model ?? "")}
+          </span>
+          {meta.grounded ? (
+            <span className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
+              <CircleCheck className="size-3.5" />{t.chat.grounded}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2 py-0.5 text-amber-300">
+              <AlertTriangle className="size-3.5" />{t.chat.ungrounded((meta.ungrounded ?? []).join(", "))}
+            </span>
+          )}
+          {meta.stopped && (
+            <span className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2 py-0.5 text-amber-300">
+              <AlertTriangle className="size-3.5" />{t.chat.agent.stopped}
+            </span>
+          )}
+        </div>
+        {!!meta.provenance?.length && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-zinc-500">{t.chat.agent.sources}:</span>
+            {meta.provenance.slice(0, 16).map((p) => (
+              <button
+                key={`${p.sheet}!${p.range}`}
+                title={`${p.table_title ?? ""} · ${t.chat.agent.openSource}`}
+                onClick={() => onOpenSource(firstCell(p))}
+                className="flex items-center gap-1 rounded-md border border-emerald-400/15 bg-emerald-500/[0.07] px-2 py-0.5 font-mono text-[11px] text-emerald-200 transition hover:bg-emerald-500/20"
+              >
+                <FileSpreadsheet className="size-3" />{p.sheet}!{p.range}
+              </button>
+            ))}
+            {meta.provenance.length > 16 && <span className="text-zinc-500">+{meta.provenance.length - 16}</span>}
+          </div>
+        )}
+        {!!steps.length && (
+          <details className="group">
+            <summary className="cursor-pointer select-none text-zinc-500 transition hover:text-zinc-300">
+              {t.chat.agent.steps(steps.length)}{meta.seconds ? ` · ${meta.seconds}s` : ""}
+            </summary>
+            <ol className="mt-2 space-y-2.5">{steps.map((s) => <StepLine key={s.n} step={s} />)}</ol>
+          </details>
+        )}
+      </div>
+    </>
+  );
+}
+
 function Typing() {
   return (
     <div className="flex items-center gap-1.5 px-1 py-2">
@@ -125,14 +276,18 @@ type Props = {
   summary: Summary | null;
   messages: Message[];
   pending: boolean;
+  /** The agent's steps so far, while an answer is on its way. */
+  liveSteps?: AgentStep[];
+  llm?: LlmStatus | null;
   onSend: (text: string) => void;
   onNewData: () => void;
   onShowGraph: (cell: string) => void;
+  onOpenSource: (cell: string) => void;
   onNavigate: (to: Exclude<Destination, "chat">) => void;
   onShowReport: () => void;
 };
 
-export function Chat({ summary, messages, pending, onSend, onNewData, onShowGraph, onNavigate, onShowReport }: Props) {
+export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, onNewData, onShowGraph, onOpenSource, onNavigate, onShowReport }: Props) {
   const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -169,6 +324,26 @@ export function Chat({ summary, messages, pending, onSend, onNewData, onShowGrap
               <p className="truncate text-xs text-zinc-500">{summary.sheets.join(" · ")}</p>
             </div>
             <StatusBadge status={summary.status ?? "unverified"} onClick={onShowReport} />
+            {summary.catalog?.built && summary.catalog.stats && (
+              <span
+                title={(summary.catalog.cards ?? []).map((c) => `${c.title} (${c.row_count})`).join("\n")}
+                className="hidden items-center gap-1.5 rounded-full border border-cyan-300/15 bg-cyan-400/[0.06] px-3 py-1 text-xs text-cyan-100 md:flex"
+              >
+                <Table2 className="size-3.5" />{t.chat.catalog(summary.catalog.stats.cards, summary.catalog.stats.families)}
+              </span>
+            )}
+            {!!summary.catalog?.stats?.low_confidence && (
+              <span className="hidden items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs text-amber-300 md:flex">
+                <AlertTriangle className="size-3.5" />{t.chat.lowConfidence(summary.catalog.stats.low_confidence)}
+              </span>
+            )}
+            {llm && (
+              <span className={`hidden items-center gap-1.5 rounded-full px-3 py-1 text-xs xl:flex ${
+                llm.local ? "bg-emerald-500/10 text-emerald-300" : "bg-sky-500/10 text-sky-300"}`}>
+                {llm.local ? <WifiOff className="size-3.5" /> : <Cloud className="size-3.5" />}
+                {llm.local ? t.chat.offline : t.chat.cloud(llm.model ?? "")}
+              </span>
+            )}
             <div className="ml-auto hidden gap-2 lg:flex">
               {[
                 [t.chat.stats.formulas, summary.counts.formulas],
@@ -301,6 +476,7 @@ export function Chat({ summary, messages, pending, onSend, onNewData, onShowGrap
                         {m.meta?.fallback && <ReplyMeta meta={m.meta} />}
                         <Markdown text={m.content} onCell={(id) => submit(id)} />
                         {m.meta?.source === "llm" && <ReplyMeta meta={m.meta} />}
+                        {m.meta?.source === "agent" && <AgentMeta meta={m.meta} onOpenSource={onOpenSource} />}
                         {!!m.cells?.length && (
                           <div className="mt-4 flex flex-wrap gap-2 border-t border-white/5 pt-3">
                             {m.cells.map((c) => (
@@ -323,9 +499,14 @@ export function Chat({ summary, messages, pending, onSend, onNewData, onShowGrap
                     <span className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-violet-500 to-cyan-400 text-white">
                       <Bot className="size-4" />
                     </span>
-                    <div className="flex items-center gap-3 rounded-2xl rounded-tl-md border border-white/[0.06] bg-white/[0.035] px-4 py-2">
-                      <Typing />
-                      <span className="text-xs text-zinc-500">{t.chat.thinking}</span>
+                    <div className="min-w-0 max-w-[92%] rounded-2xl rounded-tl-md border border-white/[0.06] bg-white/[0.035] px-4 py-2">
+                      <div className="flex items-center gap-3">
+                        <Typing />
+                        <span className="text-xs text-zinc-500">{t.chat.thinking}</span>
+                      </div>
+                      {!!liveSteps.length && (
+                        <ol className="mb-2 mt-1 space-y-2.5 text-xs">{liveSteps.map((s) => <StepLine key={s.n} step={s} />)}</ol>
+                      )}
                     </div>
                   </motion.div>
                 )}
