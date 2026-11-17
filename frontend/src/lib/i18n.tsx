@@ -12,7 +12,7 @@ const zh = {
     backendDown: "連不到 SheetIR 後端，請先執行 sheetir serve（預設 http://127.0.0.1:8765）。",
     error: (msg: string) => `出錯了：${msg}`,
   },
-  nav: { newData: "新增資料", exports: "轉換檔案", chat: "聊天", sheets: "工作表結構", issues: "問題", query: "SQL 查詢", graph: "依賴圖", charts: "圖表", language: "語言" },
+  nav: { newData: "新增資料", exports: "轉換檔案", chat: "聊天", sheets: "工作表結構", issues: "問題", query: "SQL 查詢", graph: "依賴圖", charts: "圖表", language: "語言", toLight: "切換到淺色模式", toDark: "切換到深色模式" },
   sidebar: {
     tagline: "和你的活頁簿對話",
     search: "搜尋活頁簿",
@@ -471,7 +471,7 @@ const en: typeof zh = {
     backendDown: "Can't reach the SheetIR backend. Start it with sheetir serve (default http://127.0.0.1:8765).",
     error: (msg: string) => `Something went wrong: ${msg}`,
   },
-  nav: { newData: "Add data", exports: "Converted files", chat: "Chat", sheets: "Sheet structure", issues: "Issues", query: "SQL query", graph: "Dependency graph", charts: "Charts", language: "Language" },
+  nav: { newData: "Add data", exports: "Converted files", chat: "Chat", sheets: "Sheet structure", issues: "Issues", query: "SQL query", graph: "Dependency graph", charts: "Charts", language: "Language", toLight: "Switch to light mode", toDark: "Switch to dark mode" },
   sidebar: {
     tagline: "Talk to your workbooks",
     search: "Search workbooks",

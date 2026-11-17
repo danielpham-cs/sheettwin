@@ -95,28 +95,28 @@ export function TableEditor({ sheet, draft, declared, selection, edited, saving,
         <p className="mt-1 text-xs leading-relaxed text-zinc-400">{s.how}</p>
       </div>
 
-      <div className="flex items-center gap-2 rounded-xl bg-white/[0.04] px-3 py-2 text-xs">
+      <div className="flex items-center gap-2 rounded-md bg-white/[0.04] px-3 py-2 text-xs">
         <span className="font-mono text-zinc-300">{selection ? s.selection(boxRange(selection)) : s.noSelection}</span>
         <button disabled={!selection} onClick={() => selection && onChange([...draft, { range: boxRange(selection), header_rows: 1, total: false }])}
-          className="ml-auto flex items-center gap-1 rounded-lg bg-violet-500/20 px-2 py-1 text-violet-100 ring-1 ring-violet-400/30 hover:bg-violet-500/30 disabled:opacity-40">
+          className="ml-auto flex items-center gap-1 rounded-lg bg-blue-500/20 px-2 py-1 text-blue-100 ring-1 ring-blue-400/30 hover:bg-blue-500/30 disabled:opacity-40">
           <Plus className="size-3.5" />{s.add}
         </button>
       </div>
 
       {declared.map((d) => (
-        <p key={d.table_id} className="rounded-xl bg-white/[0.03] px-3 py-2 text-xs text-zinc-500">{s.declared(d.name, `${colName(d.col_start)}${d.header_row ?? d.row_start}:${colName(d.col_end)}${d.total_row ?? d.row_end}`)}</p>
+        <p key={d.table_id} className="rounded-md bg-white/[0.03] px-3 py-2 text-xs text-zinc-500">{s.declared(d.name, `${colName(d.col_start)}${d.header_row ?? d.row_start}:${colName(d.col_end)}${d.total_row ?? d.row_end}`)}</p>
       ))}
 
       {draft.length === 0 && <p className="text-xs text-zinc-500">{s.empty}</p>}
       <ol className="space-y-3">
         {draft.map((d, i) => (
-          <li key={i} className="rounded-xl border border-white/10 p-3 text-xs">
+          <li key={i} className="rounded-md border border-white/10 p-3 text-xs">
             <div className="flex items-center gap-2">
               <span className="font-mono text-zinc-500">#{i + 1}</span>
               <label className="flex flex-1 items-center gap-1.5">
                 <span className="text-zinc-500">{s.range}</span>
                 <input id={`tbl-range-${i}`} value={d.range} onChange={(e) => set(i, { range: e.target.value.toUpperCase() })}
-                  className="w-28 rounded-md border border-white/10 bg-zinc-900 px-2 py-1 font-mono text-zinc-100 outline-none focus:border-violet-400/60" />
+                  className="w-28 rounded-md border border-white/10 bg-zinc-900 px-2 py-1 font-mono text-zinc-100 outline-none focus:border-blue-400/60" />
               </label>
               <button disabled={!selection} onClick={() => selection && set(i, { range: boxRange(selection) })} title={s.useSelection}
                 className="rounded-md px-1.5 py-1 text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-30">{s.useSelection}</button>
@@ -128,27 +128,27 @@ export function TableEditor({ sheet, draft, declared, selection, edited, saving,
                 <span className="text-zinc-500">{s.headerRows}</span>
                 <input id={`tbl-header-${i}`} type="number" min={0} max={10} value={d.header_rows}
                   onChange={(e) => set(i, { header_rows: Math.max(0, Math.min(10, Number(e.target.value) || 0)) })}
-                  className="w-14 rounded-md border border-white/10 bg-zinc-900 px-2 py-1 text-zinc-100 outline-none focus:border-violet-400/60" />
+                  className="w-14 rounded-md border border-white/10 bg-zinc-900 px-2 py-1 text-zinc-100 outline-none focus:border-blue-400/60" />
               </label>
               <label className="flex items-center gap-1.5 text-zinc-300">
-                <input id={`tbl-total-${i}`} type="checkbox" checked={d.total} onChange={(e) => set(i, { total: e.target.checked })} className="accent-violet-500" />
+                <input id={`tbl-total-${i}`} type="checkbox" checked={d.total} onChange={(e) => set(i, { total: e.target.checked })} className="accent-blue-500" />
                 {s.total}
               </label>
               <label className="flex min-w-0 flex-1 items-center gap-1.5">
                 <span className="shrink-0 text-zinc-500">{s.name}</span>
                 <input id={`tbl-name-${i}`} value={d.name ?? ""} onChange={(e) => set(i, { name: e.target.value || undefined })}
-                  className="min-w-0 flex-1 rounded-md border border-white/10 bg-zinc-900 px-2 py-1 text-zinc-100 outline-none focus:border-violet-400/60" />
+                  className="min-w-0 flex-1 rounded-md border border-white/10 bg-zinc-900 px-2 py-1 text-zinc-100 outline-none focus:border-blue-400/60" />
               </label>
             </div>
           </li>
         ))}
       </ol>
 
-      {problem && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{problem}</p>}
+      {problem && <p className="rounded-md bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{problem}</p>}
 
       <div className="flex flex-wrap gap-2">
         <button disabled={saving || !!draftError(t, draft)} onClick={onSave}
-          className="flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-400 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">
+          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-snow disabled:opacity-50">
           {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}{saving ? s.saving : s.save}
         </button>
         <button disabled={saving} onClick={onCancel} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5">

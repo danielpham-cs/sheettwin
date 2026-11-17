@@ -2,7 +2,7 @@
 // Issue examples are real findings from the bundled sample workbook (`sheetir sample`).
 
 const zh = {
-  nav: { features: "功能", how: "運作方式", issues: "偵測問題", open: "開啟 App" },
+  nav: { features: "功能", how: "運作方式", issues: "偵測問題", open: "開啟 App", toLight: "切換到淺色模式", toDark: "切換到深色模式" },
   hero: {
     badge: "SheetIR v0.1 · 概念驗證",
     title1: "讓每一張 Excel 試算表",
@@ -93,7 +93,7 @@ const zh = {
 };
 
 const en: typeof zh = {
-  nav: { features: "Features", how: "How it works", issues: "What it finds", open: "Open app" },
+  nav: { features: "Features", how: "How it works", issues: "What it finds", open: "Open app", toLight: "Switch to light mode", toDark: "Switch to dark mode" },
   hero: {
     badge: "SheetIR v0.1 · proof of concept",
     title1: "Make every spreadsheet",

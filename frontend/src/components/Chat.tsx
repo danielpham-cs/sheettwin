@@ -15,10 +15,8 @@ import {
 import type { AgentChart, AgentStep, ChatReply, LlmStatus, Provenance, Summary } from "@/lib/api";
 import { StatusBadge } from "@/components/ParseStatus";
 import { useI18n } from "@/lib/i18n";
+import { useChartPalette } from "@/lib/theme";
 
-// Same categorical palette as the charts view (validated against the card surface).
-const CAT = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
-const INK = { secondary: "#c3c2b7", muted: "#898781", grid: "#2c2c2a" };
 const TOOL_ICONS: Record<string, typeof Search> = {
   search_catalog: Search, describe_table: Table2, run_sql: Database, make_chart: ChartLine, final_answer: CircleCheck,
 };
@@ -45,11 +43,11 @@ const SUGGESTION_ICONS = [ListTree, AlertTriangle, Settings2, Table2];
 
 // Same icons and order as the left rail, so the description doubles as a map of it.
 const FEATURES = [
-  { key: "chat", icon: MessageSquareText, tint: "text-violet-300" },
+  { key: "chat", icon: MessageSquareText, tint: "text-blue-300" },
   { key: "sheets", icon: Grid3x3, tint: "text-amber-200" },
   { key: "query", icon: Database, tint: "text-sky-300" },
   { key: "graph", icon: Network, tint: "text-cyan-300" },
-  { key: "charts", icon: ChartPie, tint: "text-fuchsia-300" },
+  { key: "charts", icon: ChartPie, tint: "text-rose-300" },
   { key: "exports", icon: FolderOutput, tint: "text-emerald-300" },
 ] as const;
 
@@ -70,7 +68,7 @@ function Markdown({ text, onCell }: { text: string; onCell: (id: string) => void
                 role="button"
                 title={t.chat.traceCell}
                 onClick={() => onCell(s)}
-                className="cursor-pointer transition hover:!bg-violet-500/30 hover:!text-white"
+                className="cursor-pointer transition hover:!bg-blue-500/30 hover:!text-white"
               >
                 {s}
               </code>
@@ -100,7 +98,7 @@ function ReplyMeta({ meta }: { meta: NonNullable<Message["meta"]> }) {
   return (
     <div className="mt-4 space-y-2 border-t border-white/5 pt-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="flex items-center gap-1.5 rounded-lg bg-violet-500/10 px-2 py-0.5 text-violet-200">
+        <span className="flex items-center gap-1.5 rounded-lg bg-blue-500/10 px-2 py-0.5 text-blue-200">
           <Sparkles className="size-3.5" />{t.chat.ai(meta.model ?? "")}
         </span>
         {meta.grounded ? (
@@ -153,14 +151,15 @@ function StepLine({ step }: { step: AgentStep }) {
 }
 
 function ChartBlock({ chart }: { chart: AgentChart }) {
+  const { CAT, INK } = useChartPalette();
   const data = chart.data.map((d) => ({ ...d, [chart.x]: d[chart.x] === null ? "—" : String(d[chart.x]) }));
   const axis = { stroke: INK.muted, tick: { fill: INK.secondary, fontSize: 11 } };
-  const tooltip = <Tooltip contentStyle={{ background: "#0b0b10", border: "1px solid rgba(255,255,255,.1)", borderRadius: 12, fontSize: 12 }} />;
+  const tooltip = <Tooltip contentStyle={{ background: INK.popover, border: `1px solid ${INK.border}`, borderRadius: 12, fontSize: 12 }} />;
   let body: React.ReactElement;
   if (chart.type === "pie") {
     body = (
       <PieChart>
-        <Pie data={data} dataKey={chart.y[0]} nameKey={chart.x} outerRadius="80%" innerRadius="45%" stroke="#141419">
+        <Pie data={data} dataKey={chart.y[0]} nameKey={chart.x} outerRadius="80%" innerRadius="45%" stroke={INK.surface}>
           {data.map((_, i) => <Cell key={i} fill={CAT[i % CAT.length]} />)}
         </Pie>
         {tooltip}<Legend wrapperStyle={{ fontSize: 11, color: INK.secondary }} />
@@ -194,7 +193,7 @@ function ChartBlock({ chart }: { chart: AgentChart }) {
     );
   }
   return (
-    <div className="mt-4 rounded-2xl border border-white/[0.06] bg-[#141419]/80 p-3">
+    <div className="mt-4 rounded-lg border border-white/[0.06] bg-surface/80 p-3">
       {chart.title && <p className="mb-2 text-sm font-medium text-zinc-200">{chart.title}</p>}
       <div className="h-64 w-full"><ResponsiveContainer>{body}</ResponsiveContainer></div>
     </div>
@@ -210,7 +209,7 @@ function AgentMeta({ meta, onOpenSource }: { meta: NonNullable<Message["meta"]>;
       {meta.chart && <ChartBlock chart={meta.chart} />}
       <div className="mt-4 space-y-3 border-t border-white/5 pt-3 text-xs">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="flex items-center gap-1.5 rounded-lg bg-violet-500/10 px-2 py-0.5 text-violet-200">
+          <span className="flex items-center gap-1.5 rounded-lg bg-blue-500/10 px-2 py-0.5 text-blue-200">
             <Sparkles className="size-3.5" />{t.chat.ai(meta.model ?? "")}
           </span>
           {meta.grounded ? (
@@ -263,7 +262,7 @@ function Typing() {
       {[0, 1, 2].map((i) => (
         <motion.span
           key={i}
-          className="size-2 rounded-full bg-gradient-to-br from-violet-300 to-cyan-300"
+          className="size-1.5 rounded-full bg-zinc-400"
           animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
           transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
         />
@@ -316,7 +315,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col">
       {/* Header */}
-      <header className="flex items-center gap-4 border-b border-white/5 px-6 py-4 backdrop-blur-xl">
+      <header className="flex items-center gap-4 border-b border-white/5 px-6 py-4">
         {summary ? (
           <>
             <div className="min-w-0">
@@ -367,22 +366,17 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
         <div className="mx-auto w-full max-w-3xl px-6 pb-40 pt-8">
           {messages.length === 0 ? (
             <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="relative mb-6 grid size-20 place-items-center rounded-3xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-cyan-400 shadow-2xl shadow-violet-500/40"
-              >
-                <Bot className="size-10 text-white" />
-                <span className="absolute -inset-3 -z-10 rounded-[2rem] bg-violet-500/30 blur-2xl" />
-              </motion.div>
+              <div className="mb-5 grid size-12 place-items-center rounded-lg bg-white/[0.04] ring-1 ring-white/10">
+                <Bot className="size-6 text-blue-300" />
+              </div>
               <h3 className="text-3xl font-semibold tracking-tight">
-                {summary ? t.chat.askAbout(<span className="text-gradient">{summary.name}</span>) : <span className="text-gradient">{t.chat.hero}</span>}
+                {summary ? t.chat.askAbout(<span className="text-accent">{summary.name}</span>) : <span className="text-accent">{t.chat.hero}</span>}
               </h3>
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.05 }}
-                className="mt-6 w-full rounded-3xl border border-white/[0.07] bg-white/[0.025] p-5 text-left backdrop-blur"
+                className="mt-6 w-full rounded-xl border border-white/[0.07] bg-white/[0.025] p-5 text-left"
               >
                 <p className="text-sm leading-relaxed text-zinc-300">{t.chat.about.desc}</p>
                 <div className="mt-4 grid gap-1 sm:grid-cols-2">
@@ -392,9 +386,9 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                       <button
                         key={key}
                         onClick={() => (key === "chat" ? box.current?.focus() : onNavigate(key))}
-                        className="group flex items-start gap-3 rounded-2xl p-2.5 text-left transition hover:bg-white/[0.05]"
+                        className="group flex items-start gap-3 rounded-lg p-2.5 text-left transition hover:bg-white/[0.05]"
                       >
-                        <span className={`grid size-8 shrink-0 place-items-center rounded-xl bg-white/5 ring-1 ring-white/10 ${tint}`}>
+                        <span className={`grid size-8 shrink-0 place-items-center rounded-md bg-white/5 ring-1 ring-white/10 ${tint}`}>
                           <Icon className="size-4" />
                         </span>
                         <span className="min-w-0">
@@ -421,9 +415,9 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.1 + i * 0.06 }}
                       onClick={() => submit(prompt)}
-                      className="glow-border group flex items-center gap-3 rounded-2xl bg-white/[0.03] p-4 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.06]"
+                      className="field group flex items-center gap-3 rounded-lg bg-white/[0.03] p-4 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.06]"
                     >
-                      <span className="grid size-9 place-items-center rounded-xl bg-white/5 text-violet-300 transition group-hover:text-cyan-300">
+                      <span className="grid size-9 place-items-center rounded-md bg-white/5 text-blue-300 transition group-hover:text-cyan-300">
                         <Icon className="size-4" />
                       </span>
                       <span>
@@ -437,7 +431,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
               ) : (
                 <button
                   onClick={onNewData}
-                  className="mt-6 rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-violet-500/30 transition hover:scale-105"
+                  className="mt-6 rounded-full bg-blue-600 px-6 py-2.5 text-sm font-medium text-snow shadow-lg transition hover:bg-blue-500"
                 >
                   {t.chat.newData}
                 </button>
@@ -455,21 +449,21 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                     className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}
                   >
                     <span
-                      className={`grid size-8 shrink-0 place-items-center rounded-xl ${
+                      className={`grid size-8 shrink-0 place-items-center rounded-md ${
                         m.role === "user"
                           ? "bg-white/10 text-zinc-300"
-                          : "bg-gradient-to-br from-violet-500 to-cyan-400 text-white shadow-lg shadow-violet-500/20"
+                          : "bg-blue-600 text-snow shadow-lg"
                       }`}
                     >
                       {m.role === "user" ? <User className="size-4" /> : <Bot className="size-4" />}
                     </span>
                     {m.role === "user" ? (
-                      <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-tr-md bg-gradient-to-br from-violet-600 to-indigo-600 px-4 py-2.5 text-[14.5px] text-white shadow-lg shadow-violet-900/30">
+                      <div className="max-w-[80%] whitespace-pre-wrap rounded-lg rounded-tr-sm bg-blue-600 px-4 py-2.5 text-[14.5px] text-snow shadow-lg">
                         {m.content}
                       </div>
                     ) : (
                       <div
-                        className={`min-w-0 max-w-[92%] rounded-2xl rounded-tl-md border px-5 py-4 backdrop-blur ${
+                        className={`min-w-0 max-w-[92%] rounded-lg rounded-tl-md border px-5 py-4 ${
                           m.error ? "border-rose-400/20 bg-rose-500/10 text-rose-100" : "border-white/[0.06] bg-white/[0.035]"
                         }`}
                       >
@@ -483,7 +477,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                               <button
                                 key={c}
                                 onClick={() => onShowGraph(c)}
-                                className="flex items-center gap-1.5 rounded-lg border border-violet-400/20 bg-violet-500/10 px-2.5 py-1 text-xs text-violet-200 transition hover:bg-violet-500/20"
+                                className="flex items-center gap-1.5 rounded-lg border border-blue-400/20 bg-blue-500/10 px-2.5 py-1 text-xs text-blue-200 transition hover:bg-blue-500/20"
                               >
                                 <Network className="size-3.5" />{t.chat.showInGraph(c)}
                               </button>
@@ -496,10 +490,10 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                 ))}
                 {pending && (
                   <motion.div key="typing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex gap-3">
-                    <span className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-violet-500 to-cyan-400 text-white">
+                    <span className="grid size-8 place-items-center rounded-md bg-blue-600 text-snow">
                       <Bot className="size-4" />
                     </span>
-                    <div className="min-w-0 max-w-[92%] rounded-2xl rounded-tl-md border border-white/[0.06] bg-white/[0.035] px-4 py-2">
+                    <div className="min-w-0 max-w-[92%] rounded-lg rounded-tl-md border border-white/[0.06] bg-white/[0.035] px-4 py-2">
                       <div className="flex items-center gap-3">
                         <Typing />
                         <span className="text-xs text-zinc-500">{t.chat.thinking}</span>
@@ -517,9 +511,9 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
       </div>
 
       {/* Composer */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#07080d] via-[#07080d]/90 to-transparent pb-6 pt-16">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-canvas via-canvas/90 to-transparent pb-6 pt-16">
         <div className="pointer-events-auto mx-auto w-full max-w-3xl px-6">
-          <div className="glow-border flex items-end gap-2 rounded-3xl bg-zinc-900/80 p-2 pl-5 shadow-2xl shadow-black/50 backdrop-blur-xl">
+          <div className="field flex items-end gap-2 rounded-xl bg-zinc-900/80 p-2 pl-5 shadow-2xl shadow-black/50">
             <Crosshair className="mb-3 size-4 shrink-0 text-zinc-600" />
             <textarea
               ref={box}
@@ -540,7 +534,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
               onClick={() => submit()}
               disabled={disabled || !draft.trim()}
               aria-label={t.chat.send}
-              className="grid size-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet-500 to-cyan-400 text-white shadow-lg shadow-violet-500/30 transition enabled:hover:scale-105 disabled:from-zinc-700 disabled:to-zinc-700 disabled:text-zinc-500 disabled:shadow-none"
+              className="grid size-10 shrink-0 place-items-center rounded-lg bg-blue-600 text-snow shadow-lg transition enabled:hover:bg-blue-500 disabled:from-zinc-700 disabled:to-zinc-700 disabled:text-zinc-500 disabled:shadow-none"
             >
               <ArrowUp className="size-5" />
             </button>

@@ -152,13 +152,6 @@ function Shell() {
 
   return (
     <div className="relative flex h-full overflow-hidden">
-      {/* Aurora backdrop */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -left-40 -top-40 size-[640px] animate-aurora rounded-full bg-violet-600/25 blur-[140px]" />
-        <div className="absolute -bottom-52 right-[-10%] size-[620px] animate-aurora rounded-full bg-cyan-500/15 blur-[140px] [animation-delay:-6s]" />
-        <div className="absolute left-1/2 top-1/3 size-[420px] animate-aurora rounded-full bg-fuchsia-600/10 blur-[120px] [animation-delay:-12s]" />
-        <div className="absolute inset-0 bg-[radial-gradient(rgb(255_255_255/0.035)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
-      </div>
 
       <Sidebar
         workbooks={workbooks}
@@ -184,12 +177,12 @@ function Shell() {
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         {backendDown && (
-          <div className="mx-6 mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-100">
+          <div className="mx-6 mt-4 rounded-md border border-amber-400/20 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-100">
             {t.app.backendDown}
           </div>
         )}
         {notice && (
-          <div className="mx-6 mt-4 flex items-start gap-3 rounded-xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-2.5 text-sm text-cyan-50">
+          <div className="mx-6 mt-4 flex items-start gap-3 rounded-md border border-cyan-300/20 bg-cyan-400/10 px-4 py-2.5 text-sm text-cyan-50">
             <span className="flex-1">{notice.text}</span>
             {notice.download && (
               <a href={notice.download} download className="shrink-0 rounded-md bg-cyan-300/15 px-2 py-0.5 text-xs text-white ring-1 ring-cyan-200/30 hover:bg-cyan-300/25">
@@ -301,7 +294,7 @@ function WorkbookBar({ className, workbooks, active, onSelect }: {
   const { t } = useI18n();
   const label = (w: Workbook) => (w.versions > 1 ? `${w.name} · v${w.version}/${w.versions}` : w.name);
   return (
-    <div className={`${className} mx-4 mt-4 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm backdrop-blur md:mx-6`}>
+    <div className={`${className} mx-4 mt-4 items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm md:mx-6`}>
       <FileSpreadsheet className="size-4 shrink-0 text-emerald-300" />
       <span className="hidden shrink-0 text-xs text-zinc-500 sm:inline">{t.sidebar.current}</span>
       <select
@@ -309,7 +302,7 @@ function WorkbookBar({ className, workbooks, active, onSelect }: {
         onChange={(e) => onSelect(e.target.value)}
         aria-label={t.sidebar.current}
         title={`${active.name} · ${active.id}`}
-        className="min-w-0 flex-1 cursor-pointer truncate rounded-md bg-transparent py-0.5 font-medium text-white outline-none hover:bg-white/5 focus-visible:ring-1 focus-visible:ring-violet-400/50"
+        className="min-w-0 flex-1 cursor-pointer truncate rounded-md bg-transparent py-0.5 font-medium text-white outline-none hover:bg-white/5 focus-visible:ring-1 focus-visible:ring-blue-400/50"
       >
         {workbooks.map((w) => (
           <option key={w.id} value={w.id} className="bg-zinc-900 text-zinc-100">{label(w)}</option>
