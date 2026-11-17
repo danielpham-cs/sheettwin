@@ -7,8 +7,9 @@ import {
 import { motion } from "motion/react";
 import { I18nProvider, useI18n } from "@/lib/i18n";
 import { LANDING } from "@/lib/landing-i18n";
+import { BASE } from "@/lib/base";
 
-const APP = "/app/";
+const APP = `${BASE}/app/`;
 const SEV = { high: "#d03b3b", medium: "#fab219", low: "#898781" } as const;
 const SEV_LABEL = { zh: { high: "高", medium: "中", low: "低" }, en: { high: "High", medium: "Medium", low: "Low" } };
 
@@ -59,7 +60,7 @@ function Kicker({ children }: { children: React.ReactNode }) {
 function Page() {
   const { lang, setLang } = useI18n();
   const c = LANDING[lang];
-  const shot = (name: string) => `/screenshots/${lang}/${name}.jpg`;
+  const shot = (name: string) => `${BASE}/screenshots/${lang}/${name}.jpg`;
 
   return (
     <div className="relative h-full overflow-y-auto overflow-x-hidden scroll-smooth">
@@ -297,7 +298,7 @@ function Page() {
           <span>{c.footer.note}</span>
           <div className="ml-auto flex items-center gap-5">
             <a href={APP} className="transition hover:text-white">{c.nav.open}</a>
-            <a href="/legacy" className="transition hover:text-white">{c.footer.legacy}</a>
+            <a href={`${BASE}/legacy`} className="transition hover:text-white">{c.footer.legacy}</a>
             <button onClick={() => setLang(lang === "zh" ? "en" : "zh")} className="flex items-center gap-1.5 transition hover:text-white">
               <Languages className="size-4" />{lang === "zh" ? "English" : "中文"}
             </button>

@@ -1,4 +1,5 @@
 // Thin client for the SheetIR FastAPI backend (proxied under /api by next.config.ts).
+import { BASE } from "./base";
 
 /** One stored result: the workbook file it came from (by content hash) and how it was parsed. */
 export type Workbook = {
@@ -284,7 +285,7 @@ export class ApiError extends Error {
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+  const res = await fetch(BASE + path, init);
   if (!res.ok) {
     let detail: unknown = `${res.status} ${res.statusText}`;
     try {
@@ -320,7 +321,7 @@ export const api = {
   chat: (id: string, message: string, lang: string) => call<ChatReply>(`/api/workbooks/${id}/chat`, json({ message, lang })),
   /** The same answer as `chat`, with each agent step passed to `onStep` as it finishes (server-sent events). */
   chatStream: async (id: string, message: string, lang: string, onStep: (s: AgentStep) => void): Promise<ChatReply> => {
-    const res = await fetch(`/api/workbooks/${id}/chat/stream`, json({ message, lang }));
+    const res = await fetch(`${BASE}/api/workbooks/${id}/chat/stream`, json({ message, lang }));
     if (!res.ok || !res.body) throw new ApiError(`${res.status} ${res.statusText}`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -374,7 +375,7 @@ export const api = {
     if (opts.lang) q.set("lang", opts.lang);
     if (opts.inline) q.set("inline", "true");
     const query = q.toString();
-    return `/api/workbooks/${id}/exports/${encodeURIComponent(name)}${query ? `?${query}` : ""}`;
+    return `${BASE}/api/workbooks/${id}/exports/${encodeURIComponent(name)}${query ? `?${query}` : ""}`;
   },
 };
 

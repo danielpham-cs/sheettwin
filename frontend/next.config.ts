@@ -24,5 +24,7 @@ export default function config(phase: string): NextConfig {
   // `next build`: plain static files in out/ (landing page at /, the app at /app/), copied into sheetir/web/static/app
   // (scripts/copy-to-backend.mjs) and served by FastAPI on the same origin as /api.
   // trailingSlash writes app/index.html, which FastAPI serves at /app/ (dev keeps it off: it would redirect /api calls).
-  return { turbopack, output: "export", trailingSlash: true };
+  // NEXT_PUBLIC_BASE_PATH (optional) serves the build under a sub-path, e.g. behind jupyter-server-proxy.
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") || undefined;
+  return { turbopack, output: "export", trailingSlash: true, basePath };
 }
