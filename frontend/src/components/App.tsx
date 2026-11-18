@@ -11,9 +11,10 @@ import { QueryView } from "@/components/QueryView";
 import { ResolveDialog, type ResolveTarget } from "@/components/ResolveDialog";
 import { StructureView } from "@/components/StructureView";
 import { Sidebar, type View } from "@/components/Sidebar";
+import { KnowledgePanel } from "@/components/KnowledgePanel";
 import { ProjectSwitcher, type ProjectControls } from "@/components/ProjectMenu";
 import { UploadDialog } from "@/components/UploadDialog";
-import { api, DEFAULT_PROJECT, type AgentStep, type IngestResult, type LlmStatus, type Project, type Summary, type Workbook } from "@/lib/api";
+import { api, DEFAULT_PROJECT, type AgentStep, type IngestResult, type LlmStatus, type Project, type ProjectKnowledge, type Summary, type Workbook } from "@/lib/api";
 import { I18nProvider, useI18n } from "@/lib/i18n";
 import { ChevronRight, FileSpreadsheet } from "lucide-react";
 
@@ -87,6 +88,28 @@ function Shell() {
   const inProject = useMemo(() => workbooks.filter((w) => project?.workbooks.includes(w.id)), [workbooks, project]);
   const activeId = chosenId && inProject.some((w) => w.id === chosenId) ? chosenId : inProject[0]?.id ?? null;
   const chatKey = project ? `project:${project.id}` : null;
+
+  // The project's instructions and documents for the AI (kept with the project they were fetched for).
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+  const [fetchedKnowledge, setFetchedKnowledge] = useState<{ pid: string; data: ProjectKnowledge } | null>(null);
+  const pid = project?.id ?? null;
+  const loadKnowledge = useCallback(async () => {
+    if (!pid) return;
+    const data = await api.knowledge(pid);
+    setFetchedKnowledge({ pid, data });
+  }, [pid]);
+  useEffect(() => {
+    if (!pid) return;
+    let live = true;
+    api.knowledge(pid).then((data) => live && setFetchedKnowledge({ pid, data }), () => {});
+    return () => { live = false; };
+  }, [pid]);
+  const knowledgeData = fetchedKnowledge && fetchedKnowledge.pid === pid ? fetchedKnowledge.data : null;
+  const knowledge = {
+    summary: t.knowledge.summary(!!knowledgeData?.instructions, knowledgeData?.docs.length ?? 0),
+    set: !!knowledgeData && (!!knowledgeData.instructions || knowledgeData.docs.length > 0),
+    onOpen: () => setKnowledgeOpen(true),
+  };
   // The files the project's AI answers from: the latest version of each (the list is most recently uploaded first).
   const latestFiles = useMemo(() => {
     const seen = new Set<string>();
@@ -217,6 +240,7 @@ function Shell() {
 
       <Sidebar
         {...projectControls}
+        knowledge={knowledge}
         workbooks={inProject}
         activeId={activeId}
         panel={panel}
@@ -326,6 +350,7 @@ function Shell() {
             onNewData={() => setUploadOpen(true)}
             onShowGraph={traceCell}
             onOpenSource={openCell}
+            knowledge={project ? knowledge : undefined}
             context={project ? {
               project, files: latestFiles,
               activeFile: latestFiles.find((w) => w.name.toLowerCase() === activeWorkbook?.name.toLowerCase())?.id ?? null,
@@ -336,6 +361,8 @@ function Shell() {
         )}
       </main>
 
+      <KnowledgePanel open={knowledgeOpen} project={project} knowledge={knowledgeData}
+        onClose={() => setKnowledgeOpen(false)} onChanged={loadKnowledge} />
       <UploadDialog open={uploadOpen} project={project?.id ?? DEFAULT_PROJECT} onClose={() => setUploadOpen(false)} onDone={uploaded} onDoneMany={uploadedMany} />
       <ParseReport
         open={reportOpen}

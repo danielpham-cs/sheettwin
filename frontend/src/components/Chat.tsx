@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  AlertTriangle, ArrowUp, Bot, ChartLine, ChartPie, CircleCheck, Cloud, Crosshair, Database, FileSpreadsheet, FolderOutput, Grid3x3,
-  ListTree, Lock, MessageSquareText, Network, Search, Settings2, Sparkles, Table2, User, WifiOff,
+  AlertTriangle, ArrowUp, BookOpen, Bot, ChartLine, ChartPie, CircleCheck, Cloud, Crosshair, Database, FileSpreadsheet, FolderOutput, Grid3x3,
+  ListTree, Lock, MessageSquareText, Network, Search, Settings2, Sparkles, Table2, User,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
@@ -288,11 +288,14 @@ type Props = {
   /** The project the chat belongs to: its files (one per file name) are what the AI answers from; `activeFile` is
    * the one on screen, which cell addresses and questions about structure or issues are about. */
   context?: { project: Project; files: Workbook[]; activeFile: string | null };
+  /** The project's instructions and documents for the AI: a summary ("Instructions · 2 docs"), whether any is set,
+   * and how to open them. */
+  knowledge?: { summary: string; set: boolean; onOpen: () => void };
   onNavigate: (to: Exclude<Destination, "chat">) => void;
   onShowReport: () => void;
 };
 
-export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, onNewData, onShowGraph, onOpenSource, onNavigate, onShowReport, context }: Props) {
+export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, onNewData, onShowGraph, onOpenSource, onNavigate, onShowReport, context, knowledge }: Props) {
   const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -320,7 +323,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
   }
 
   return (
-    <div className="relative flex h-full min-w-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Header */}
       <header className="flex items-center gap-4 border-b border-white/5 px-6 py-3.5">
         {context ? (
@@ -330,13 +333,15 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
               <h2 className="truncate font-semibold text-white">{pname}</h2>
               <p className="truncate text-xs text-zinc-500">{t.projects.chatSub(context.files.length)}</p>
             </div>
-            {llm && (
-              <span className={`ml-auto hidden items-center gap-1.5 rounded-full px-3 py-1 text-xs md:flex ${
-                llm.local ? "bg-emerald-500/10 text-emerald-300" : "bg-sky-500/10 text-sky-300"}`}>
-                {llm.local ? <WifiOff className="size-3.5" /> : <Cloud className="size-3.5" />}
-                {llm.local ? t.chat.offline : t.chat.cloud(llm.model ?? "")}
-              </span>
+            {knowledge && (
+              <button onClick={knowledge.onOpen} title={t.knowledge.open}
+                className={`ml-auto flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition ${knowledge.set
+                  ? "border-blue-400/30 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20" : "border-white/10 text-zinc-300 hover:bg-white/5"}`}>
+                <BookOpen className="size-3.5" />{t.knowledge.button}
+                <span className={knowledge.set ? "text-blue-300/80" : "text-zinc-500"}>· {knowledge.summary}</span>
+              </button>
             )}
+            {llm && <AiBadge llm={llm} className={`${knowledge ? "" : "ml-auto"} hidden md:flex`} />}
           </>
         ) : summary ? (
           <>
@@ -358,13 +363,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                 <AlertTriangle className="size-3.5" />{t.chat.lowConfidence(summary.catalog.stats.low_confidence)}
               </span>
             )}
-            {llm && (
-              <span className={`hidden items-center gap-1.5 rounded-full px-3 py-1 text-xs xl:flex ${
-                llm.local ? "bg-emerald-500/10 text-emerald-300" : "bg-sky-500/10 text-sky-300"}`}>
-                {llm.local ? <WifiOff className="size-3.5" /> : <Cloud className="size-3.5" />}
-                {llm.local ? t.chat.offline : t.chat.cloud(llm.model ?? "")}
-              </span>
-            )}
+            {llm && <AiBadge llm={llm} className="hidden xl:flex" />}
             <div className="ml-auto hidden gap-2 lg:flex">
               {[
                 [t.chat.stats.formulas, summary.counts.formulas],
@@ -494,6 +493,17 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                         <Markdown text={m.content} onCell={(id) => submit(id)} />
                         {m.meta?.source === "llm" && <ReplyMeta meta={m.meta} />}
                         {m.meta?.source === "agent" && <AgentMeta meta={m.meta} onOpenSource={onOpenSource} />}
+                        {!!m.meta?.knowledge?.length && (
+                          <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+                            <BookOpen className="size-3.5 text-blue-300" />{t.knowledge.used}
+                            {m.meta.knowledge.map((d) => (
+                              <button key={d.id} onClick={knowledge?.onOpen}
+                                className="rounded-md border border-blue-400/20 bg-blue-500/[0.07] px-1.5 py-0.5 text-blue-200 hover:bg-blue-500/15">
+                                {d.name}{d.whole ? "" : ` (${t.knowledge.excerpt})`}
+                              </button>
+                            ))}
+                          </p>
+                        )}
                         {!!m.cells?.length && (
                           <div className="mt-4 flex flex-wrap gap-2 border-t border-white/5 pt-3">
                             {m.cells.map((c) => (
@@ -550,6 +560,12 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                   </span>
                 );
               })}
+              {knowledge?.set && (
+                <button onClick={knowledge.onOpen} title={t.knowledge.open}
+                  className="inline-flex items-center gap-1 rounded-md border border-blue-400/30 bg-blue-500/10 px-2 py-0.5 text-blue-100 hover:bg-blue-500/20">
+                  <BookOpen className="size-3 shrink-0" />{knowledge.summary}
+                </button>
+              )}
             </div>
           )}
           <div className="field flex items-end gap-2 rounded-xl bg-zinc-900/80 p-2 pl-5 shadow-2xl shadow-black/50">
@@ -582,5 +598,25 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
         </div>
       </div>
     </div>
+  );
+}
+
+/** Shown only when the user should know how answers are made: no model is configured (the built-in rules answer), or
+ * the model is a cloud service (questions and data excerpts leave the network). A model on this machine or the LAN is
+ * the normal case and needs no badge: each answer names its model. Details on hover. */
+function AiBadge({ llm, className }: { llm: LlmStatus; className: string }) {
+  const { t } = useI18n();
+  const s = t.chat.ai_status;
+  if (llm.enabled && llm.local) return null;
+  // "hf.co/unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q5_K_M" -> "Qwen3.6-35B-A3B"
+  const short = (llm.model ?? "").split("/").pop()!.split(":")[0].replace(/-GGUF$/i, "") || (llm.model ?? "");
+  const [label, title, tone] = !llm.enabled
+    ? [s.off, s.offHint(llm.reason ?? ""), "bg-white/[0.04] text-zinc-400 ring-white/10"]
+    : [s.cloud(short), s.cloudHint(llm.model ?? "", llm.endpoint ?? ""), "bg-sky-500/10 text-sky-300 ring-sky-400/20"];
+  return (
+    <span title={title} className={`${className} max-w-[18rem] shrink-0 cursor-help items-center gap-1.5 rounded-full px-3 py-1 text-xs ring-1 ${tone}`}>
+      {!llm.enabled ? <Bot className="size-3.5 shrink-0" /> : <Cloud className="size-3.5 shrink-0" />}
+      <span className="truncate">{label}</span>
+    </span>
   );
 }

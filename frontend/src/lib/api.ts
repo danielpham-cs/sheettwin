@@ -218,6 +218,16 @@ export type ChatReply = {
   seconds?: number;
   /** In a project chat: the workbook the answer is about, when it is about one (cell ids, structure, issues). */
   workbook?: string;
+  /** The project's documents the model was given with the question (`whole`: all of it, else relevant passages). */
+  knowledge?: { id: string; name: string; whole: boolean }[];
+};
+
+/** A document added to a project for the model to read (its text is extracted at upload). */
+export type KnowledgeDoc = { id: string; name: string; size: number; uploaded: string; chars: number; truncated: boolean };
+export type ProjectKnowledge = {
+  instructions: string;
+  docs: KnowledgeDoc[];
+  limits: { instructions: number; doc_bytes: number; suffixes: string[] };
 };
 
 export type CatalogBrief = {
@@ -334,6 +344,17 @@ export const api = {
   /** Add a workbook (with its other versions) to a project, taking it out of `moveFrom`. */
   moveToProject: (id: string, workbook: string, moveFrom?: string) =>
     call<{ project: string; workbooks: string[] }>(`/api/projects/${id}/workbooks`, json({ workbook, move_from: moveFrom ?? null })),
+  knowledge: (id: string) => call<ProjectKnowledge>(`/api/projects/${id}/knowledge`),
+  setInstructions: (id: string, instructions: string) =>
+    call<{ instructions: string }>(`/api/projects/${id}/instructions`,
+      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instructions }) }),
+  addDoc: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return call<KnowledgeDoc>(`/api/projects/${id}/docs`, { method: "POST", body: form });
+  },
+  removeDoc: (id: string, doc: string) => call<{ deleted: string }>(`/api/projects/${id}/docs/${doc}`, { method: "DELETE" }),
+  docText: (id: string, doc: string) => call<{ text: string }>(`/api/projects/${id}/docs/${doc}/text`),
   /** Ask about a whole project: data questions go to an agent over all its files; cell ids and questions about
    * structure or issues are answered about `workbook`, the one on screen. */
   projectChatStream: (id: string, message: string, lang: string, workbook: string | null, onStep: (s: AgentStep) => void) =>
