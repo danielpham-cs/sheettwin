@@ -190,7 +190,13 @@ export type AgentChart = {
 export type AgentResult = { result_id: string; sql: string; columns: string[]; rows: unknown[][]; row_count: number; truncated: boolean };
 
 /** A sheet and range an answer was read from. */
-export type Provenance = { sheet: string; range: string; table_title?: string; card_id?: string };
+/** In a project's answers, `workbook_id` names the file the range is in. */
+export type Provenance = { sheet: string; range: string; table_title?: string; card_id?: string; workbook?: string; workbook_id?: string };
+
+/** A named group of workbooks; its chat agent sees the tables of all of them. "default" always exists and holds every
+ * workbook no other project holds. */
+export type Project = { id: string; name: string; created: string | null; workbooks: string[] };
+export const DEFAULT_PROJECT = "default";
 
 /** `source` says who answered: the query agent over the catalog, the language model grounded in the IR, or the
  * built-in rules. */
@@ -210,6 +216,8 @@ export type ChatReply = {
   provenance?: Provenance[];
   stopped?: string | null;
   seconds?: number;
+  /** In a project chat: the workbook the answer is about, when it is about one (cell ids, structure, issues). */
+  workbook?: string;
 };
 
 export type CatalogBrief = {
@@ -309,41 +317,33 @@ const json = (body: unknown): RequestInit => ({
 export const api = {
   workbooks: () => call<Workbook[]>("/api/workbooks"),
   summary: (id: string) => call<Summary>(`/api/workbooks/${id}/summary`),
-  upload: (file: File) => {
+  upload: (file: File, project?: string) => {
     const form = new FormData();
     form.append("file", file);
     form.append("last_modified", String(file.lastModified)); // recorded as the file's provenance
+    if (project) form.append("project", project);
     return call<IngestResult>("/api/workbooks", { method: "POST", body: form });
   },
-  sample: () => call<IngestResult>("/api/workbooks/sample", { method: "POST" }),
+  sample: (project?: string) =>
+    call<IngestResult>(`/api/workbooks/sample${project ? `?project=${encodeURIComponent(project)}` : ""}`, { method: "POST" }),
+  projects: () => call<Project[]>("/api/projects"),
+  createProject: (name: string) => call<Project>("/api/projects", json({ name })),
+  renameProject: (id: string, name: string) =>
+    call<Project>(`/api/projects/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }),
+  deleteProject: (id: string) => call<{ deleted: string }>(`/api/projects/${id}`, { method: "DELETE" }),
+  /** Add a workbook (with its other versions) to a project, taking it out of `moveFrom`. */
+  moveToProject: (id: string, workbook: string, moveFrom?: string) =>
+    call<{ project: string; workbooks: string[] }>(`/api/projects/${id}/workbooks`, json({ workbook, move_from: moveFrom ?? null })),
+  /** Ask about a whole project: data questions go to an agent over all its files; cell ids and questions about
+   * structure or issues are answered about `workbook`, the one on screen. */
+  projectChatStream: (id: string, message: string, lang: string, workbook: string | null, onStep: (s: AgentStep) => void) =>
+    readStream(`/api/projects/${id}/chat/stream`, { message, lang, workbook }, onStep),
   remove: (id: string) => call<{ deleted: string }>(`/api/workbooks/${id}`, { method: "DELETE" }),
   diff: (id: string, against: string) => call<DiffResult>(`/api/workbooks/${id}/diff?against=${encodeURIComponent(against)}`),
   chat: (id: string, message: string, lang: string) => call<ChatReply>(`/api/workbooks/${id}/chat`, json({ message, lang })),
   /** The same answer as `chat`, with each agent step passed to `onStep` as it finishes (server-sent events). */
-  chatStream: async (id: string, message: string, lang: string, onStep: (s: AgentStep) => void): Promise<ChatReply> => {
-    const res = await fetch(`${BASE}/api/workbooks/${id}/chat/stream`, json({ message, lang }));
-    if (!res.ok || !res.body) throw new ApiError(`${res.status} ${res.statusText}`);
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-      let cut: number;
-      while ((cut = buffer.indexOf("\n\n")) >= 0) {
-        const block = buffer.slice(0, cut);
-        buffer = buffer.slice(cut + 2);
-        const event = /^event: (.*)$/m.exec(block)?.[1];
-        const data = /^data: (.*)$/m.exec(block)?.[1];
-        if (!event || data === undefined) continue;
-        const body = JSON.parse(data);
-        if (event === "step") onStep(body as AgentStep);
-        else if (event === "final") return body as ChatReply;
-        else if (event === "error") throw new ApiError(String(body.error));
-      }
-      if (done) throw new ApiError("the answer stream ended early");
-    }
-  },
+  chatStream: (id: string, message: string, lang: string, onStep: (s: AgentStep) => void) =>
+    readStream(`/api/workbooks/${id}/chat/stream`, { message, lang }, onStep),
   llm: () => call<LlmStatus>("/api/llm"),
   catalog: (id: string) => call<CatalogBrief>(`/api/workbooks/${id}/catalog`),
   graph: (id: string, cell?: string) =>
@@ -378,6 +378,33 @@ export const api = {
     return `${BASE}/api/workbooks/${id}/exports/${encodeURIComponent(name)}${query ? `?${query}` : ""}`;
   },
 };
+
+/** POST `body` to a chat stream: each agent step goes to `onStep` as it finishes (server-sent events), then the
+ * answer is returned. */
+async function readStream(path: string, body: unknown, onStep: (s: AgentStep) => void): Promise<ChatReply> {
+  const res = await fetch(`${BASE}${path}`, json(body));
+  if (!res.ok || !res.body) throw new ApiError(`${res.status} ${res.statusText}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    let cut: number;
+    while ((cut = buffer.indexOf("\n\n")) >= 0) {
+      const block = buffer.slice(0, cut);
+      buffer = buffer.slice(cut + 2);
+      const event = /^event: (.*)$/m.exec(block)?.[1];
+      const data = /^data: (.*)$/m.exec(block)?.[1];
+      if (!event || data === undefined) continue;
+      const body = JSON.parse(data);
+      if (event === "step") onStep(body as AgentStep);
+      else if (event === "final") return body as ChatReply;
+      else if (event === "error") throw new ApiError(String(body.error));
+    }
+    if (done) throw new ApiError("the answer stream ended early");
+  }
+}
 
 export function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;

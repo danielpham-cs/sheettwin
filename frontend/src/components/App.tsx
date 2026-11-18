@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Chat, type Message } from "@/components/Chat";
 import { ExportsPanel } from "@/components/ExportsPanel";
 import { FailureView, ParseReport } from "@/components/ParseStatus";
@@ -11,12 +11,22 @@ import { QueryView } from "@/components/QueryView";
 import { ResolveDialog, type ResolveTarget } from "@/components/ResolveDialog";
 import { StructureView } from "@/components/StructureView";
 import { Sidebar, type View } from "@/components/Sidebar";
+import { ProjectSwitcher, type ProjectControls } from "@/components/ProjectMenu";
 import { UploadDialog } from "@/components/UploadDialog";
-import { api, type AgentStep, type IngestResult, type LlmStatus, type Summary, type Workbook } from "@/lib/api";
+import { api, DEFAULT_PROJECT, type AgentStep, type IngestResult, type LlmStatus, type Project, type Summary, type Workbook } from "@/lib/api";
 import { I18nProvider, useI18n } from "@/lib/i18n";
-import { FileSpreadsheet } from "lucide-react";
+import { ChevronRight, FileSpreadsheet } from "lucide-react";
 
-const STORE_KEY = "sheettwin.chats";
+const STORE_KEY = "sheettwin.chats"; // chats by project: "project:<id>"
+const PROJECT_KEY = "sheettwin.project";
+
+function loadProject(): string {
+  try {
+    return localStorage.getItem(PROJECT_KEY) || DEFAULT_PROJECT;
+  } catch {
+    return DEFAULT_PROJECT;
+  }
+}
 
 function loadChats(): Record<string, Message[]> {
   try {
@@ -39,7 +49,9 @@ export default function App() {
 function Shell() {
   const { t, lang } = useI18n();
   const [workbooks, setWorkbooks] = useState<Workbook[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectId, setProjectId] = useState<string>(loadProject);
+  const [chosenId, setChosenId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<Summary | null>(null);
   const [chats, setChats] = useState<Record<string, Message[]>>(loadChats);
   const [pending, setPending] = useState(false);
@@ -57,20 +69,54 @@ function Shell() {
 
   const refresh = useCallback(
     (select?: string): Promise<Workbook[]> =>
-      api.workbooks().then(
-        (list) => {
+      Promise.all([api.workbooks(), api.projects()]).then(
+        ([list, ps]) => {
           setWorkbooks(list);
+          setProjects(ps);
           setBackendDown(false);
-          setActiveId((cur) => {
-            const keep = select ?? cur;
-            return keep && list.some((w) => w.id === keep) ? keep : list[0]?.id ?? null;
-          });
+          if (select) setChosenId(select);
           return list;
         },
         () => { setBackendDown(true); return []; },
       ),
     [],
   );
+
+  // The project in view (it may have been deleted elsewhere: then "default"), its workbooks, and the one on screen.
+  const project = projects.find((p) => p.id === projectId) ?? projects.find((p) => p.id === DEFAULT_PROJECT) ?? null;
+  const inProject = useMemo(() => workbooks.filter((w) => project?.workbooks.includes(w.id)), [workbooks, project]);
+  const activeId = chosenId && inProject.some((w) => w.id === chosenId) ? chosenId : inProject[0]?.id ?? null;
+  const chatKey = project ? `project:${project.id}` : null;
+  // The files the project's AI answers from: the latest version of each (the list is most recently uploaded first).
+  const latestFiles = useMemo(() => {
+    const seen = new Set<string>();
+    return inProject.filter((w) => w.status !== "failed" && !seen.has(w.name.toLowerCase()) && !!seen.add(w.name.toLowerCase()));
+  }, [inProject]);
+
+  function switchProject(id: string) {
+    setProjectId(id);
+    try { localStorage.setItem(PROJECT_KEY, id); } catch {}
+    setChosenId(null); setGraphFocus(null); setSheetFocus(null); setNotice(null);
+  }
+  const fileCounts = useMemo(() => {
+    const nameOf = new Map(workbooks.map((w) => [w.id, w.name.toLowerCase()]));
+    return Object.fromEntries(projects.map((p) => [p.id, new Set(p.workbooks.flatMap((id) => nameOf.get(id) ?? [])).size]));
+  }, [workbooks, projects]);
+  const projectControls: ProjectControls = {
+    projects,
+    fileCounts,
+    activeProject: project?.id ?? DEFAULT_PROJECT,
+    onProject: switchProject,
+    onCreateProject: async (name) => { const p = await api.createProject(name); await refresh(); switchProject(p.id); },
+    onRenameProject: async (id, name) => { await api.renameProject(id, name); await refresh(); },
+    onDeleteProject: async (id) => {
+      await api.deleteProject(id);
+      setChats((c) => { const next = { ...c }; delete next[`project:${id}`]; return next; });
+      switchProject(DEFAULT_PROJECT);
+      await refresh();
+    },
+    onMove: async (wid, to) => { await api.moveToProject(to, wid, project?.id); await refresh(); },
+  };
 
   // After an upload, say whether it was a file seen before or a new version of a known one. `made`: how this version
   // was made from the previous one by an edit in SheetTwin (given its version number); it also offers the download.
@@ -91,9 +137,16 @@ function Shell() {
     setNotice(parts.length ? { text: parts.join(" "), report: !res.failed, download: made ? api.exportUrl(res.id, res.name) : undefined } : null);
   }
 
+  // After a multi-file upload: open the last file that parsed, and sum up how it went.
+  async function uploadedMany(results: IngestResult[], refused: number) {
+    const ok = results.filter((r) => !r.failed);
+    await refresh(ok.at(-1)?.id ?? results.at(-1)?.id);
+    const dup = results.filter((r) => r.duplicate).length;
+    setNotice({ text: t.upload.many(results.length - dup, dup, results.length - ok.length, refused) });
+  }
+
   async function remove(id: string) {
     await api.remove(id);
-    setChats((c) => { const next = { ...c }; delete next[id]; return next; });
     await refresh();
   }
 
@@ -101,7 +154,7 @@ function Shell() {
     // The landing page's "try the sample" button links to /app/?sample=1.
     if (new URLSearchParams(window.location.search).has("sample")) {
       window.history.replaceState(null, "", window.location.pathname);
-      api.sample().then(({ id }) => refresh(id), () => refresh());
+      api.sample(loadProject()).then(({ id }) => refresh(id), () => refresh());
     } else {
       refresh();
     }
@@ -113,8 +166,17 @@ function Shell() {
     } catch {}
   }, [chats]);
 
-  const activeWorkbook = workbooks.find((w) => w.id === activeId);
-  const selectWorkbook = (id: string) => { setActiveId(id); setGraphFocus(null); setSheetFocus(null); setNotice(null); };
+  const activeWorkbook = inProject.find((w) => w.id === activeId);
+  const selectWorkbook = (id: string) => { setChosenId(id); setGraphFocus(null); setSheetFocus(null); setNotice(null); };
+  // A cell named by a chat answer, in the workbook it is in (in a project chat, maybe not the one on screen).
+  const openCell = (cell: string, wid?: string) => {
+    if (wid && wid !== activeId) selectWorkbook(wid);
+    setSheetFocus(cell); setView("sheets");
+  };
+  const traceCell = (cell: string, wid?: string) => {
+    if (wid && wid !== activeId) selectWorkbook(wid);
+    setGraphFocus(cell); setView("graph");
+  };
   // Summary of the active workbook; a stale one (other id) counts as not loaded yet.
   const summary = loaded && loaded.id === activeId ? loaded : null;
   const [reloads, setReloads] = useState(0); // bumped after a re-parse, to fetch the new summary
@@ -126,18 +188,18 @@ function Shell() {
   }, [activeId, reloads]);
 
   async function send(text: string) {
-    if (!activeId) return;
-    const wid = activeId;
-    const push = (m: Message) => setChats((c) => ({ ...c, [wid]: [...(c[wid] ?? []), m] }));
+    if (!activeId || !project || !chatKey) return;
+    const wid = activeId, pid = project.id, key = chatKey;
+    const push = (m: Message) => setChats((c) => ({ ...c, [key]: [...(c[key] ?? []), m] }));
     push({ id: uid(), role: "user", content: text });
     setPending(true);
     setLiveSteps([]);
     try {
       // Steps arrive as the agent takes them; a short floor keeps the typing indicator from flickering.
-      const stream = api.chatStream(wid, text, lang, (s) => setLiveSteps((prev) => [...prev, s]));
+      const stream = api.projectChatStream(pid, text, lang, wid, (s) => setLiveSteps((prev) => [...prev, s]));
       const [res] = await Promise.all([stream, new Promise((r) => setTimeout(r, 450))]);
       const { reply, cells, ...meta } = res;
-      push({ id: uid(), role: "assistant", content: reply, cells, meta });
+      push({ id: uid(), role: "assistant", content: reply, cells, meta, workbook: res.workbook ?? wid });
     } catch (e) {
       push({ id: uid(), role: "assistant", content: t.app.error((e as Error).message), error: true });
     } finally {
@@ -154,7 +216,8 @@ function Shell() {
     <div className="relative flex h-full overflow-hidden">
 
       <Sidebar
-        workbooks={workbooks}
+        {...projectControls}
+        workbooks={inProject}
         activeId={activeId}
         panel={panel}
         view={view}
@@ -170,7 +233,7 @@ function Shell() {
         workbookId={activeId}
         workbookName={summary?.name}
         workbook={workbooks.find((w) => w.id === activeId)}
-        versions={workbooks.filter((w) => w.name.toLowerCase() === workbooks.find((x) => x.id === activeId)?.name.toLowerCase())}
+        versions={inProject.filter((w) => w.name.toLowerCase() === activeWorkbook?.name.toLowerCase())}
         onOpenCell={(cell) => { setPanel(null); setSheetFocus(cell); setView("sheets"); }}
         onClose={() => setPanel(null)}
       />
@@ -197,13 +260,15 @@ function Shell() {
             <button onClick={() => setNotice(null)} aria-label="close" className="text-cyan-200/70 hover:text-white">✕</button>
           </div>
         )}
-        {activeWorkbook && (
-          <WorkbookBar
-            // The sidebar's workbook list is hidden on small screens, and on wide ones in the grid-heavy views.
-            className={view === "sheets" || view === "graph" ? "flex" : "flex md:hidden"}
-            workbooks={workbooks}
+        {project && (
+          <ContextBar
+            // Views about one file show where they are (project › file); the chat is about the whole project and says
+            // so in its own header, so there the bar is only for small screens, where the sidebar is hidden.
+            className={view === "chat" ? "flex md:hidden" : "flex"}
+            workbooks={inProject}
             active={activeWorkbook}
             onSelect={selectWorkbook}
+            projectControls={projectControls}
           />
         )}
         {activeWorkbook?.status === "failed" ? (
@@ -220,7 +285,7 @@ function Shell() {
             workbookId={activeId}
             summary={summary}
             focusCell={sheetFocus}
-            onTraceGraph={(cell) => { setGraphFocus(cell); setView("graph"); }}
+            onTraceGraph={(cell) => traceCell(cell)}
             onAsk={(cell) => { setView("chat"); send(cell); }}
             onReparsed={() => { setReloads((n) => n + 1); refresh(); }}
             onResolve={setResolving}
@@ -253,21 +318,25 @@ function Shell() {
         ) : (
           <Chat
             summary={summary}
-            messages={(activeId && chats[activeId]) || []}
+            messages={(chatKey && chats[chatKey]) || []}
             pending={pending}
             liveSteps={liveSteps}
             llm={llm}
             onSend={send}
             onNewData={() => setUploadOpen(true)}
-            onShowGraph={(cell) => { setGraphFocus(cell); setView("graph"); }}
-            onOpenSource={(cell) => { setSheetFocus(cell); setView("sheets"); }}
+            onShowGraph={traceCell}
+            onOpenSource={openCell}
+            context={project ? {
+              project, files: latestFiles,
+              activeFile: latestFiles.find((w) => w.name.toLowerCase() === activeWorkbook?.name.toLowerCase())?.id ?? null,
+            } : undefined}
             onNavigate={(to) => (to === "exports" ? setPanel("exports") : setView(to))}
             onShowReport={() => setReportOpen(true)}
           />
         )}
       </main>
 
-      <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onDone={uploaded} />
+      <UploadDialog open={uploadOpen} project={project?.id ?? DEFAULT_PROJECT} onClose={() => setUploadOpen(false)} onDone={uploaded} onDoneMany={uploadedMany} />
       <ParseReport
         open={reportOpen}
         summary={summary}
@@ -287,27 +356,34 @@ function Shell() {
   );
 }
 
-/** Which workbook the current view shows, with a switcher, for views where the sidebar's list is hidden. */
-function WorkbookBar({ className, workbooks, active, onSelect }: {
-  className: string; workbooks: Workbook[]; active: Workbook; onSelect: (id: string) => void;
+/** Where the view is: the project (with its switcher) › the file on screen (with a switcher among the project's files). */
+function ContextBar({ className, workbooks, active, onSelect, projectControls }: {
+  className: string; workbooks: Workbook[]; active?: Workbook; onSelect: (id: string) => void; projectControls: ProjectControls;
 }) {
   const { t } = useI18n();
   const label = (w: Workbook) => (w.versions > 1 ? `${w.name} · v${w.version}/${w.versions}` : w.name);
   return (
-    <div className={`${className} mx-4 mt-4 items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm md:mx-6`}>
-      <FileSpreadsheet className="size-4 shrink-0 text-emerald-300" />
-      <span className="hidden shrink-0 text-xs text-zinc-500 sm:inline">{t.sidebar.current}</span>
-      <select
-        value={active.id}
-        onChange={(e) => onSelect(e.target.value)}
-        aria-label={t.sidebar.current}
-        title={`${active.name} · ${active.id}`}
-        className="min-w-0 flex-1 cursor-pointer truncate rounded-md bg-transparent py-0.5 font-medium text-white outline-none hover:bg-white/5 focus-visible:ring-1 focus-visible:ring-blue-400/50"
-      >
-        {workbooks.map((w) => (
-          <option key={w.id} value={w.id} className="bg-zinc-900 text-zinc-100">{label(w)}</option>
-        ))}
-      </select>
-    </div>
+    <nav aria-label="breadcrumb" className={`${className} mx-4 mt-4 min-w-0 items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1.5 text-sm md:mx-6`}>
+      <ProjectSwitcher {...projectControls} variant="crumb" />
+      <ChevronRight className="size-4 shrink-0 text-zinc-600" />
+      {active ? (
+        <label className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-white/[0.06]">
+          <FileSpreadsheet className="size-4 shrink-0 text-emerald-300" />
+          <select
+            value={active.id}
+            onChange={(e) => onSelect(e.target.value)}
+            aria-label={t.sidebar.current}
+            title={`${active.name} · ${active.id}`}
+            className="min-w-0 flex-1 cursor-pointer truncate bg-transparent font-medium text-white outline-none focus-visible:ring-1 focus-visible:ring-blue-400/50"
+          >
+            {workbooks.map((w) => (
+              <option key={w.id} value={w.id} className="bg-zinc-900 text-zinc-100">{label(w)}</option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <span className="px-1.5 text-zinc-500">{t.projects.noFiles}</span>
+      )}
+    </nav>
   );
 }
