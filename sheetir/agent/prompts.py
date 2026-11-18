@@ -55,9 +55,11 @@ NEEDS_RESULT = ("Your answer states figures but cites no query result. Run the q
                 "final_answer with its result_ids.")
 
 
-def system_prompt(summary: str, lang: str, rows_to_llm: int) -> str:
+def system_prompt(summary: str, lang: str, rows_to_llm: int, context: str = "") -> str:
+    """`context`: the project's instructions and documents (sheetir.web.knowledge), after the rules."""
     rule = f"Answer in {LANGUAGE_NAME.get(lang, 'English')}, the language of the question."
-    return SYSTEM.format(summary=summary, rows_to_llm=rows_to_llm, language_rule=rule)
+    prompt = SYSTEM.format(summary=summary, rows_to_llm=rows_to_llm, language_rule=rule)
+    return f"{prompt}\n\n{context}" if context else prompt
 
 
 STOPPED = {

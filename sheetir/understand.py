@@ -226,9 +226,10 @@ def _result_table(columns: list[str], rows: list[list], lang: str) -> str:
     return RESULT_TABLE[lang] + "\n\n" + "\n".join(lines)
 
 
-def ask(con: sqlite3.Connection, question: str, llm: LLM, lang: str = "en") -> dict:
+def ask(con: sqlite3.Connection, question: str, llm: LLM, lang: str = "en", project_context: str = "") -> dict:
     """Answer a question about the workbook. `lang` is the UI language, used only when the question's own language
-    cannot be told. Returns {reply, cells, unknown_cells, sql, route, lang, grounded, ungrounded, model}."""
+    cannot be told. `project_context`: the project's instructions and documents (sheetir.web.knowledge); numbers taken
+    from it count as grounded. Returns {reply, cells, unknown_cells, sql, route, lang, grounded, ungrounded, model}."""
     lang = question_language(question, lang)
     rule = "\n" + LANGUAGE_RULE[lang]
     context = f"{SCHEMA_NOTES}\n\n# Sketch\n{sketch(con)}"
@@ -241,7 +242,7 @@ def ask(con: sqlite3.Connection, question: str, llm: LLM, lang: str = "en") -> d
                 "FROM cells c LEFT JOIN tables t ON t.table_id = c.table_id "
                 "LEFT JOIN fields f ON f.table_id = c.table_id AND f.col = c.col")
     context += _table_views(con)
-    ask_q = f"{context}\n\n# Question\n{question}"
+    ask_q = f"{context}\n\n{project_context}\n\n# Question\n{question}" if project_context else f"{context}\n\n# Question\n{question}"
     plan = llm.json(SYSTEM + PLAN_RULES + rule, ask_q, PLAN_SCHEMA, "plan")
     route, sql, answer = plan["route"], plan["sql"].strip(), plan["answer"].strip()
     if route not in ("structure", "data", "issues"):
@@ -286,11 +287,11 @@ def ask(con: sqlite3.Connection, question: str, llm: LLM, lang: str = "en") -> d
                     result["counts"][key][v] = result["counts"][key].get(v, 0) + 1
             extra += tuple(n for d in result["counts"].values() for n in d.values())
         data = json.dumps(result, ensure_ascii=False, default=str)
-        sources = [question, data]
+        sources = [question, project_context, data]
         answer_q = f"{ask_q}\n\n# Query\n{sql}\n\n# Result (JSON)\n{data}"
         answer = llm.json(SYSTEM + ANSWER_RULES + rule, answer_q, ANSWER_SCHEMA, "answer")["answer"].strip()
     else:
-        sources, answer_q = [question, context], ask_q
+        sources, answer_q = [question, context, project_context], ask_q
 
     # Checked by SheetIR: the reply's language, then its numbers. Each gets one rewrite.
     if sources and text_language(answer) not in (lang, "neutral"):

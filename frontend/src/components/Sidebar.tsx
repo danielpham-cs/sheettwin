@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ChartPie, ChevronRight, Database, FilePlus2, FileSpreadsheet, FolderInput, FolderOutput, Grid3x3, Languages,
+  BookOpen, ChartPie, ChevronRight, Database, FilePlus2, FileSpreadsheet, FolderInput, FolderOutput, Grid3x3, Languages,
   ListChecks, MessageSquareText, Moon, Network, Plus, Sun, Search, Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -52,6 +52,8 @@ function MoveMenu({ projects, current, onMove }: { projects: Project[]; current:
 }
 
 type Props = ProjectControls & {
+  /** The project's instructions and documents for the AI: a summary, whether any is set, and how to open them. */
+  knowledge: { summary: string; set: boolean; onOpen: () => void };
   workbooks: Workbook[];
   activeId: string | null;
   panel: "exports" | null;
@@ -90,7 +92,7 @@ function RailButton({
   );
 }
 
-export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, onNewData, onToggleExports, onRemove, ...pc }: Props) {
+export function Sidebar({ knowledge, workbooks, activeId, panel, view, onView, onSelect, onNewData, onToggleExports, onRemove, ...pc }: Props) {
   const { t, lang, setLang } = useI18n();
   const [theme, toggleTheme] = useTheme();
   const [query, setQuery] = useState("");
@@ -159,6 +161,12 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
       <aside className={`${view === "graph" || view === "sheets" ? "md:hidden" : "md:flex"} hidden w-72 flex-col border-r border-white/5 bg-white/[0.02]`}>
         <div className="border-b border-white/5 px-3 pb-3 pt-4">
           <ProjectSwitcher {...pc} />
+          <button onClick={knowledge.onOpen} title={t.knowledge.open}
+            className="mt-2 flex w-full items-center gap-2 rounded-md border border-white/[0.07] bg-white/[0.02] px-2.5 py-1.5 text-left text-xs transition hover:bg-white/[0.06]">
+            <BookOpen className={`size-3.5 shrink-0 ${knowledge.set ? "text-blue-300" : "text-zinc-500"}`} />
+            <span className="text-zinc-200">{t.knowledge.button}</span>
+            <span className={`ml-auto truncate ${knowledge.set ? "text-blue-300/80" : "text-zinc-500"}`}>{knowledge.summary}</span>
+          </button>
         </div>
         <div className="h-3" />
         <div className="px-4">

@@ -49,7 +49,7 @@ from ..store import IR_SCHEMA, TRACE_SQL
 from ..understand import ask
 from ..verify import NOT_UNDERSTOOD
 from ..catalog.project import ProjectCatalog
-from . import graph, projects, provenance
+from . import graph, knowledge, projects, provenance
 from .basepath import BasePathMiddleware
 from .charts import charts
 from .chat import answer, find_cells
@@ -793,8 +793,8 @@ def _route(question: str, llm, h: CatalogHandle) -> str:
         return "data"
 
 
-def _agent_reply(question: str, catalog, llm, lang: str, on_step) -> dict:
-    r = agent_answer(question, catalog, llm, lang=lang, on_step=on_step)
+def _agent_reply(question: str, catalog, llm, lang: str, on_step, context: str = "") -> dict:
+    r = agent_answer(question, catalog, llm, lang=lang, on_step=on_step, context=context)
     last_sql = r.results[-1]["sql"] if r.results else None
     return jsonable({
         "reply": r.answer, "cells": [], "source": "agent", "model": r.model, "route": "data", "sql": last_sql,
@@ -803,7 +803,7 @@ def _agent_reply(question: str, catalog, llm, lang: str, on_step) -> dict:
         "provenance": r.provenance, "stopped": r.stopped, "seconds": r.seconds})
 
 
-def _chat(wid: str, req: ChatRequest, on_step=None, route: str | None = None) -> dict:
+def _chat(wid: str, req: ChatRequest, on_step=None, route: str | None = None, context: str = "") -> dict:
     """Bare cell ids get the rule-based cell card; with no model, the rules answer. With a model, questions about the
     data go to the agent over the catalog (sheetir.agent), questions about structure and issues to the IR-grounded
     Q&A (sheetir.understand.ask). If the model path fails, the rules answer and `fallback` says why. `route`: the
@@ -817,8 +817,8 @@ def _chat(wid: str, req: ChatRequest, on_step=None, route: str | None = None) ->
         if route is None:
             route = _route(req.message, llm, h) if h is not None and h.cards else "ir"
         if route == "data" and h is not None and h.cards:
-            return _agent_reply(req.message, h, llm, req.lang, on_step)
-        r = ask(con, req.message, llm, req.lang)
+            return _agent_reply(req.message, h, llm, req.lang, on_step, context)
+        r = ask(con, req.message, llm, req.lang, project_context=context)
     except Exception as e:  # any failure of the model path: the user still gets an answer, and the reason
         log.exception("LLM chat failed; answering with the rules")
         return {**answer(_connect(wid), req.message, req.lang), "source": "rules",
@@ -868,7 +868,16 @@ def _project_members(pid: str) -> list[tuple[str, str, CatalogHandle]]:
 def _project_chat(pid: str, req: ProjectChatRequest, on_step=None) -> dict:
     """Questions about the data go to one agent over the tables of every workbook in the project, so it can compare
     and join them; everything else (bare cell ids, structure, issues, or no model) is answered about the workbook the
-    user is looking at, as /workbooks/{id}/chat does."""
+    user is looking at, as /workbooks/{id}/chat does. The language model gets the project's instructions and documents
+    with the question; `knowledge` in the reply lists the documents it was given."""
+    context, used = knowledge.context_for(data_dir(), pid, req.message)
+    res = _project_answer(pid, req, on_step, context)
+    if used and res.get("source") in ("llm", "agent"):  # the rules read none of it
+        res["knowledge"] = used
+    return res
+
+
+def _project_answer(pid: str, req: ProjectChatRequest, on_step, context: str) -> dict:
     members = _project_members(pid)
     focus = req.workbook if req.workbook and _ID_RE.match(req.workbook) and (data_dir() / req.workbook / "ir.db").exists() \
         else (members[0][0] if members else None)
@@ -876,7 +885,7 @@ def _project_chat(pid: str, req: ProjectChatRequest, on_step=None) -> dict:
     if len(members) <= 1 or llm is None:
         if focus is None:
             raise HTTPException(400, "this project has no parsed workbook to answer from")
-        return {**_chat(focus, req, on_step), "workbook": focus}
+        return {**_chat(focus, req, on_step, context=context), "workbook": focus}
     if focus is not None:
         con = _connect(focus)
         try:
@@ -888,13 +897,63 @@ def _project_chat(pid: str, req: ProjectChatRequest, on_step=None) -> dict:
     try:
         route = _route(req.message, llm, cat)
         if route == "data" or focus is None:
-            return _agent_reply(req.message, cat, llm, req.lang, on_step)
+            return _agent_reply(req.message, cat, llm, req.lang, on_step, context)
     except Exception as e:  # noqa: BLE001 - as in _chat: the file in view still gets an answer, and the reason
         log.exception("project agent failed; answering about the workbook in view")
         if focus is None:
             raise
-        return {**_chat(focus, req, on_step, route="ir"), "workbook": focus, "fallback": f"{type(e).__name__}: {e}"[:300]}
-    return {**_chat(focus, req, on_step, route=route), "workbook": focus}
+        return {**_chat(focus, req, on_step, route="ir", context=context), "workbook": focus,
+                "fallback": f"{type(e).__name__}: {e}"[:300]}
+    return {**_chat(focus, req, on_step, route=route, context=context), "workbook": focus}
+
+
+# ---- project knowledge: instructions and documents --------------------------------------------------------------------
+
+class _doc_errors(_project_errors):
+    def __exit__(self, kind, exc, tb):
+        if isinstance(exc, knowledge.DocError):
+            raise HTTPException(exc.status, {"kind": exc.kind, "message": str(exc)}) from exc
+        return super().__exit__(kind, exc, tb)
+
+
+class Instructions(BaseModel):
+    instructions: str
+
+
+@app.get("/api/projects/{pid}/knowledge")
+def project_knowledge(pid: str):
+    """The project's instructions and documents (without their text)."""
+    with _doc_errors():
+        return {"instructions": projects.instructions(data_dir(), pid), "docs": knowledge.listing(data_dir(), pid),
+                "limits": {"instructions": knowledge.MAX_INSTRUCTIONS, "doc_bytes": knowledge.MAX_DOC_BYTES,
+                           "suffixes": list(knowledge.DOC_SUFFIXES)}}
+
+
+@app.put("/api/projects/{pid}/instructions")
+def set_project_instructions(pid: str, req: Instructions):
+    with _doc_errors():
+        return {"instructions": projects.set_instructions(data_dir(), pid, req.instructions, knowledge.MAX_INSTRUCTIONS)}
+
+
+@app.post("/api/projects/{pid}/docs")
+def add_project_doc(pid: str, file: UploadFile):
+    """Add a .md, .txt, .docx or .pdf document; its text is extracted now. The same document added again is kept once."""
+    with _doc_errors():
+        return knowledge.add(data_dir(), pid, file.filename, file.file.read())
+
+
+@app.get("/api/projects/{pid}/docs/{doc_id}/text")
+def project_doc_text(pid: str, doc_id: str):
+    """The text extracted from a document, as the language model reads it."""
+    with _doc_errors():
+        return {"text": knowledge.text(data_dir(), pid, doc_id)}
+
+
+@app.delete("/api/projects/{pid}/docs/{doc_id}")
+def remove_project_doc(pid: str, doc_id: str):
+    with _doc_errors():
+        knowledge.remove(data_dir(), pid, doc_id)
+    return {"deleted": doc_id}
 
 
 @app.post("/api/projects/{pid}/chat/stream")

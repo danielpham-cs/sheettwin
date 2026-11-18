@@ -63,12 +63,15 @@ class _Answer(BaseModel):
 
 
 def answer(question: str, catalog, llm, settings: Settings | None = None, lang: str = "en",
-           on_step: Callable[[Step], None] | None = None) -> AgentResult:
+           on_step: Callable[[Step], None] | None = None, context: str = "") -> AgentResult:
+    """`context`: the project's instructions and documents, given after the rules. A number the answer takes from them
+    counts as grounded, as one from the question does."""
     s = settings or get_settings()
+    asked = f"{question}\n{context}" if context else question  # what the answer's numbers may come from, besides results
     t_start = time.perf_counter()
     lang = question_language(question, lang)
     tools = Toolbox(catalog, s)
-    messages = [{"role": "system", "content": system_prompt(catalog.summary(), lang, s.agent.max_rows_to_llm)},
+    messages = [{"role": "system", "content": system_prompt(catalog.summary(), lang, s.agent.max_rows_to_llm, context)},
                 {"role": "user", "content": f"Question: {question}"}]
     steps: list[Step] = []
     corrected = False
@@ -87,7 +90,7 @@ def answer(question: str, catalog, llm, settings: Settings | None = None, lang: 
             if action.tool == "final_answer":
                 text = str(action.args.get("answer") or "").strip()
                 rids = [r for r in (action.args.get("result_ids") or []) if r in tools.results]
-                problem = _check(question, text, rids, tools)
+                problem = _check(asked, text, rids, tools)
                 if problem and not corrected:
                     corrected = True
                     result = {"error": problem}
@@ -134,7 +137,7 @@ def answer(question: str, catalog, llm, settings: Settings | None = None, lang: 
                                  name="rewrite_language").answer.strip() or text
         except LLMError:
             pass
-    missing = _ungrounded(question, text, tools)
+    missing = _ungrounded(asked, text, tools)
     if missing:
         text += "\n\n> " + UNVERIFIED_NOTE.get(lang, UNVERIFIED_NOTE["en"]) + ", ".join(missing)
     chart = tools.charts.get(str(chart_id)) if chart_id else None

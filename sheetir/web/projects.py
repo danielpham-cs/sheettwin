@@ -149,6 +149,35 @@ def remove(data: Path, pid: str, wid: str) -> None:
             _write(data, rec)
 
 
+def folder(data: Path, pid: str) -> Path:
+    """The project's own folder (its project.json, and the documents of knowledge.py)."""
+    return _path(data, pid).parent
+
+
+def _existing(data: Path, pid: str) -> dict:
+    rec = next((r for r in _all(data) if r["id"] == pid), None)
+    if rec is None:
+        raise ProjectError(404, "project not found")
+    return rec
+
+
+def instructions(data: Path, pid: str) -> str:
+    """What the user wrote for the language model about this project ("" when nothing)."""
+    with _lock:
+        return _existing(data, pid).get("instructions", "")
+
+
+def set_instructions(data: Path, pid: str, text: str, limit: int) -> str:
+    text = (text or "").strip()
+    if len(text) > limit:
+        raise ProjectError(400, f"instructions can be up to {limit} characters")
+    with _lock:
+        rec = _existing(data, pid)
+        rec["instructions"] = text
+        _write(data, rec)
+    return text
+
+
 def holders(data: Path, wid: str) -> list[str]:
     """Ids of the projects that list `wid` explicitly."""
     with _lock:
