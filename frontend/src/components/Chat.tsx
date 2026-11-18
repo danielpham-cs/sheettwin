@@ -12,7 +12,8 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Scatter, ScatterChart,
   Tooltip, XAxis, YAxis,
 } from "recharts";
-import type { AgentChart, AgentStep, ChatReply, LlmStatus, Provenance, Summary } from "@/lib/api";
+import type { AgentChart, AgentStep, ChatReply, LlmStatus, Project, Provenance, Summary, Workbook } from "@/lib/api";
+import { ProjectBadge, projectName } from "@/components/ProjectMenu";
 import { StatusBadge } from "@/components/ParseStatus";
 import { useI18n } from "@/lib/i18n";
 import { useChartPalette } from "@/lib/theme";
@@ -33,6 +34,8 @@ export type Message = {
   content: string;
   error?: boolean;
   cells?: string[];
+  /** In a project chat: the workbook the reply's cell ids are in. */
+  workbook?: string;
   /** Where an assistant reply came from and how it was checked (absent in chats saved before this existed). */
   meta?: Omit<ChatReply, "reply" | "cells">;
 };
@@ -201,7 +204,7 @@ function ChartBlock({ chart }: { chart: AgentChart }) {
 }
 
 /** The agent's answer: model and number check, its chart, the sheets it read, and its steps. */
-function AgentMeta({ meta, onOpenSource }: { meta: NonNullable<Message["meta"]>; onOpenSource: (cell: string) => void }) {
+function AgentMeta({ meta, onOpenSource }: { meta: NonNullable<Message["meta"]>; onOpenSource: (cell: string, workbook?: string) => void }) {
   const { t } = useI18n();
   const steps = meta.steps ?? [];
   return (
@@ -232,12 +235,12 @@ function AgentMeta({ meta, onOpenSource }: { meta: NonNullable<Message["meta"]>;
             <span className="text-zinc-500">{t.chat.agent.sources}:</span>
             {meta.provenance.slice(0, 16).map((p) => (
               <button
-                key={`${p.sheet}!${p.range}`}
-                title={`${p.table_title ?? ""} · ${t.chat.agent.openSource}`}
-                onClick={() => onOpenSource(firstCell(p))}
+                key={`${p.workbook_id ?? ""}|${p.sheet}!${p.range}`}
+                title={`${p.workbook ? `${p.workbook} · ` : ""}${p.table_title ?? ""} · ${t.chat.agent.openSource}`}
+                onClick={() => onOpenSource(firstCell(p), p.workbook_id)}
                 className="flex items-center gap-1 rounded-md border border-emerald-400/15 bg-emerald-500/[0.07] px-2 py-0.5 font-mono text-[11px] text-emerald-200 transition hover:bg-emerald-500/20"
               >
-                <FileSpreadsheet className="size-3" />{p.sheet}!{p.range}
+                <FileSpreadsheet className="size-3" />{p.workbook && <span className="font-sans text-emerald-300/70">{p.workbook} ·</span>}{p.sheet}!{p.range}
               </button>
             ))}
             {meta.provenance.length > 16 && <span className="text-zinc-500">+{meta.provenance.length - 16}</span>}
@@ -280,13 +283,16 @@ type Props = {
   llm?: LlmStatus | null;
   onSend: (text: string) => void;
   onNewData: () => void;
-  onShowGraph: (cell: string) => void;
-  onOpenSource: (cell: string) => void;
+  onShowGraph: (cell: string, workbook?: string) => void;
+  onOpenSource: (cell: string, workbook?: string) => void;
+  /** The project the chat belongs to: its files (one per file name) are what the AI answers from; `activeFile` is
+   * the one on screen, which cell addresses and questions about structure or issues are about. */
+  context?: { project: Project; files: Workbook[]; activeFile: string | null };
   onNavigate: (to: Exclude<Destination, "chat">) => void;
   onShowReport: () => void;
 };
 
-export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, onNewData, onShowGraph, onOpenSource, onNavigate, onShowReport }: Props) {
+export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, onNewData, onShowGraph, onOpenSource, onNavigate, onShowReport, context }: Props) {
   const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -305,6 +311,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
   }, [draft]);
 
   const disabled = !summary || pending;
+  const pname = context ? projectName(context.project, t) : null;
   function submit(text = draft) {
     const t = text.trim();
     if (!t || disabled) return;
@@ -315,8 +322,23 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col">
       {/* Header */}
-      <header className="flex items-center gap-4 border-b border-white/5 px-6 py-4">
-        {summary ? (
+      <header className="flex items-center gap-4 border-b border-white/5 px-6 py-3.5">
+        {context ? (
+          <>
+            <ProjectBadge project={context.project} size="lg" />
+            <div className="min-w-0">
+              <h2 className="truncate font-semibold text-white">{pname}</h2>
+              <p className="truncate text-xs text-zinc-500">{t.projects.chatSub(context.files.length)}</p>
+            </div>
+            {llm && (
+              <span className={`ml-auto hidden items-center gap-1.5 rounded-full px-3 py-1 text-xs md:flex ${
+                llm.local ? "bg-emerald-500/10 text-emerald-300" : "bg-sky-500/10 text-sky-300"}`}>
+                {llm.local ? <WifiOff className="size-3.5" /> : <Cloud className="size-3.5" />}
+                {llm.local ? t.chat.offline : t.chat.cloud(llm.model ?? "")}
+              </span>
+            )}
+          </>
+        ) : summary ? (
           <>
             <div className="min-w-0">
               <h2 className="truncate font-medium">{summary.name}</h2>
@@ -370,7 +392,8 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                 <Bot className="size-6 text-blue-300" />
               </div>
               <h3 className="text-3xl font-semibold tracking-tight">
-                {summary ? t.chat.askAbout(<span className="text-accent">{summary.name}</span>) : <span className="text-accent">{t.chat.hero}</span>}
+                {context && summary ? <span className="text-accent">{t.projects.askAbout(pname!)}</span>
+                  : summary ? t.chat.askAbout(<span className="text-accent">{summary.name}</span>) : <span className="text-accent">{t.chat.hero}</span>}
               </h3>
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
@@ -476,7 +499,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                             {m.cells.map((c) => (
                               <button
                                 key={c}
-                                onClick={() => onShowGraph(c)}
+                                onClick={() => onShowGraph(c, m.workbook)}
                                 className="flex items-center gap-1.5 rounded-lg border border-blue-400/20 bg-blue-500/10 px-2.5 py-1 text-xs text-blue-200 transition hover:bg-blue-500/20"
                               >
                                 <Network className="size-3.5" />{t.chat.showInGraph(c)}
@@ -513,6 +536,22 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
       {/* Composer */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-canvas via-canvas/90 to-transparent pb-6 pt-16">
         <div className="pointer-events-auto mx-auto w-full max-w-3xl px-6">
+          {context && context.files.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="flex items-center gap-1.5 text-zinc-500"><ProjectBadge project={context.project} size="sm" />{t.projects.context}:</span>
+              {context.files.map((w) => {
+                const inView = w.id === context.activeFile;
+                return (
+                  <span key={w.id} title={inView ? t.projects.inViewHint : w.name}
+                    className={`inline-flex max-w-[16rem] items-center gap-1 rounded-md border px-2 py-0.5 ${inView ? "border-blue-400/40 bg-blue-500/10 text-blue-100" : "border-white/10 bg-white/[0.04] text-zinc-300"}`}>
+                    <FileSpreadsheet className="size-3 shrink-0 text-emerald-300" />
+                    <span className="truncate">{w.name}</span>
+                    {inView && context.files.length > 1 && <span className="shrink-0 text-[10px] text-blue-300">· {t.projects.inView}</span>}
+                  </span>
+                );
+              })}
+            </div>
+          )}
           <div className="field flex items-end gap-2 rounded-xl bg-zinc-900/80 p-2 pl-5 shadow-2xl shadow-black/50">
             <Crosshair className="mb-3 size-4 shrink-0 text-zinc-600" />
             <textarea
@@ -527,7 +566,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                   submit();
                 }
               }}
-              placeholder={summary ? t.chat.placeholder : t.chat.placeholderEmpty}
+              placeholder={summary ? (pname ? t.projects.placeholder(pname) : t.chat.placeholder) : t.chat.placeholderEmpty}
               className="max-h-[180px] flex-1 resize-none bg-transparent py-2.5 text-[15px] text-zinc-100 outline-none placeholder:text-zinc-600 disabled:cursor-not-allowed"
             />
             <button

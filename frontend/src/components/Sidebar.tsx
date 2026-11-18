@@ -1,13 +1,14 @@
 "use client";
 
 import {
-  ChartPie, ChevronRight, Database, FilePlus2, FileSpreadsheet, FolderOutput, Grid3x3, Languages, ListChecks, MessageSquareText, Moon, Network, Sun,
-  Search, Trash2,
+  ChartPie, ChevronRight, Database, FilePlus2, FileSpreadsheet, FolderInput, FolderOutput, Grid3x3, Languages,
+  ListChecks, MessageSquareText, Moon, Network, Plus, Sun, Search, Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
-import { useState } from "react";
-import type { Workbook } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import type { Project, Workbook } from "@/lib/api";
+import { ProjectBadge, projectName, ProjectSwitcher, type ProjectControls } from "@/components/ProjectMenu";
 import { Logo } from "@/components/Logo";
 import { StatusBadge } from "@/components/ParseStatus";
 import { useI18n } from "@/lib/i18n";
@@ -15,7 +16,42 @@ import { useTheme } from "@/lib/theme";
 
 export type View = "chat" | "sheets" | "issues" | "query" | "graph" | "charts";
 
-type Props = {
+/** A small menu of the other projects, to move a workbook there. */
+function MoveMenu({ projects, current, onMove }: { projects: Project[]; current: string; onMove: (to: string) => void }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+  const others = projects.filter((p) => p.id !== current);
+  if (!others.length) return null;
+  return (
+    <div ref={box} className="relative">
+      <button onClick={() => setOpen((o) => !o)} title={t.projects.moveTo} aria-label={t.projects.moveTo}
+        className={`rounded-md p-1 text-zinc-500 hover:bg-white/10 hover:text-white ${open ? "block" : "hidden group-hover:block"}`}>
+        <FolderInput className="size-3.5" />
+      </button>
+      {open && (
+        <ul className="absolute right-0 top-full z-50 mt-1 w-48 rounded-md border border-white/10 bg-zinc-900 py-1 text-sm shadow-xl">
+          <li className="px-3 py-1 text-[10px] uppercase tracking-wider text-zinc-500">{t.projects.moveTo}</li>
+          {others.map((p) => (
+            <li key={p.id}>
+              <button onClick={() => { setOpen(false); onMove(p.id); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10">
+                <ProjectBadge project={p} size="sm" /><span className="truncate">{projectName(p, t)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+type Props = ProjectControls & {
   workbooks: Workbook[];
   activeId: string | null;
   panel: "exports" | null;
@@ -54,7 +90,7 @@ function RailButton({
   );
 }
 
-export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, onNewData, onToggleExports, onRemove }: Props) {
+export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, onNewData, onToggleExports, onRemove, ...pc }: Props) {
   const { t, lang, setLang } = useI18n();
   const [theme, toggleTheme] = useTheme();
   const [query, setQuery] = useState("");
@@ -70,7 +106,9 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
   for (const g of groups) g.versions.sort((a, b) => b.version - a.version);
   const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(t.locale, { dateStyle: "short", timeStyle: "short" }) : "");
   const toggle = (key: string) => setExpanded((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
-  const remove = (w: Workbook) => { if (confirm(t.sidebar.removeConfirm(w.name, w.version))) onRemove(w.id); };
+  // The version waiting for the user to confirm its removal (asked under its row, not in a browser dialog).
+  const [confirming, setConfirming] = useState<Workbook | null>(null);
+  const remove = (w: Workbook) => setConfirming(w);
 
   return (
     <div className="flex h-full shrink-0">
@@ -119,12 +157,10 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
 
       {/* Workbook list */}
       <aside className={`${view === "graph" || view === "sheets" ? "md:hidden" : "md:flex"} hidden w-72 flex-col border-r border-white/5 bg-white/[0.02]`}>
-        <div className="px-5 pb-3 pt-6">
-          <h1 className="text-lg font-semibold tracking-tight">
-            <span className="text-accent">SheetTwin</span>
-          </h1>
-          <p className="mt-0.5 text-xs text-zinc-500">{t.sidebar.tagline}</p>
+        <div className="border-b border-white/5 px-3 pb-3 pt-4">
+          <ProjectSwitcher {...pc} />
         </div>
+        <div className="h-3" />
         <div className="px-4">
           <label className="flex items-center gap-2 rounded-md border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-zinc-400 focus-within:border-blue-400/40">
             <Search className="size-4" />
@@ -136,13 +172,24 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
             />
           </label>
         </div>
-        <div className="mt-4 px-5 text-[11px] font-medium uppercase tracking-wider text-zinc-600">{t.sidebar.workbooks}</div>
+        <div className="mt-4 flex items-center px-5">
+          <span className="flex-1 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            {t.projects.filesHeading} <span className="text-zinc-600">· {groups.length}</span>
+          </span>
+          <button onClick={onNewData} title={t.projects.addFiles} aria-label={t.projects.addFiles}
+            className="rounded-md p-1 text-zinc-500 hover:bg-white/10 hover:text-white"><Plus className="size-4" /></button>
+        </div>
         <ul className="mt-2 flex-1 space-y-1 overflow-y-auto px-3 pb-4">
-          {groups.length === 0 && (
-            <li className="px-3 py-6 text-center text-sm text-zinc-600">
-              {workbooks.length ? t.sidebar.noMatch : t.sidebar.empty}
+          {groups.length === 0 && (workbooks.length ? (
+            <li className="px-3 py-6 text-center text-sm text-zinc-600">{t.sidebar.noMatch}</li>
+          ) : (
+            <li className="mx-1 mt-1 rounded-lg border border-dashed border-white/15 px-4 py-6 text-center">
+              <p className="text-sm text-zinc-400">{t.projects.noFiles}</p>
+              <button onClick={onNewData} className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500">
+                <Plus className="size-3.5" />{t.projects.addFiles}
+              </button>
             </li>
-          )}
+          ))}
           {groups.map(({ key, versions }) => {
             const current = versions.find((w) => w.id === activeId);
             const shownVersion = current ?? versions[0];
@@ -179,6 +226,9 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
                       </span>
                     )}
                   </button>
+                  <span className="relative">
+                    <MoveMenu projects={pc.projects} current={pc.activeProject} onMove={(to) => pc.onMove(shownVersion.id, to)} />
+                  </span>
                   {versions.length > 1 ? (
                     <button onClick={() => toggle(key)} title={t.sidebar.showVersions} aria-label={t.sidebar.showVersions}
                       className="relative mr-1.5 rounded-md p-1 text-zinc-500 hover:bg-white/10 hover:text-white">
@@ -210,11 +260,37 @@ export function Sidebar({ workbooks, activeId, panel, view, onView, onSelect, on
                     ))}
                   </ul>
                 )}
+                {confirming && versions.some((w) => w.id === confirming.id) && (
+                  <RemoveConfirm workbook={confirming} single={versions.length === 1}
+                    onCancel={() => setConfirming(null)} onConfirm={() => { setConfirming(null); onRemove(confirming.id); }} />
+                )}
               </li>
             );
           })}
         </ul>
       </aside>
+    </div>
+  );
+}
+
+/** Asks, under a file's row, whether to remove one stored version; Esc or Cancel keeps it. */
+function RemoveConfirm({ workbook: w, single, onCancel, onConfirm }: {
+  workbook: Workbook; single: boolean; onCancel: () => void; onConfirm: () => void;
+}) {
+  const { t } = useI18n();
+  const s = t.sidebar;
+  return (
+    <div role="alertdialog" aria-label={s.removeTitle(w.name, w.version, single)}
+      onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }}
+      className="mx-1 mb-1 mt-1 rounded-md border border-rose-400/30 bg-rose-500/[0.06] p-3 text-xs">
+      <p className="flex items-start gap-1.5 font-medium text-zinc-100">
+        <Trash2 className="mt-px size-3.5 shrink-0 text-rose-300" /><span className="min-w-0 break-words">{s.removeTitle(w.name, w.version, single)}</span>
+      </p>
+      <p className="mt-1 leading-relaxed text-zinc-400">{s.removeBody}</p>
+      <div className="mt-2.5 flex justify-end gap-2">
+        <button autoFocus onClick={onCancel} className="rounded-md px-2.5 py-1 text-zinc-300 hover:bg-white/10">{s.cancel}</button>
+        <button onClick={onConfirm} className="rounded-md bg-rose-600 px-2.5 py-1 font-medium text-white hover:bg-rose-500">{s.removeButton}</button>
+      </div>
     </div>
   );
 }

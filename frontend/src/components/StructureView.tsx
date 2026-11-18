@@ -109,7 +109,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
   useEffect(() => {
     if (!sd || !gridRef.current) return;
     const target = selected
-      ? gridRef.current.querySelector(`[data-id="${CSS.escape(selected)}"]`)
+      ? gridRef.current.querySelector(`[data-id="${CSS.escape(selected)}"]`) ?? gridRef.current.querySelector("[data-sel]")
       : focusTable != null ? gridRef.current.querySelector(`[data-t0="${focusTable}"]`) : null;
     target?.scrollIntoView({ block: "center", inline: "nearest" });
   }, [sd, selected, focusTable]);
@@ -121,7 +121,9 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
     const drafts = draft.map((d, i) => specToInfo(d, declared.length + i + 1, sheet)).filter((x): x is TableInfo => !!x);
     return [...declared, ...drafts];
   }, [sd, draft, sheet]);
-  const grid = useMemo(() => (sd && shownTables ? buildGrid(sd, shownTables) : null), [sd, shownTables]);
+  // Large sheets are drawn in a window of MAX_ROWS × MAX_COLS; it moves so a cell opened from elsewhere is in it.
+  const anchor = useMemo(() => (selected && sheet && sheetOf(selected) === sheet ? posOf(selected) : null), [selected, sheet]);
+  const grid = useMemo(() => (sd && shownTables ? buildGrid(sd, shownTables, anchor) : null), [sd, shownTables, anchor]);
 
   if (!workbookId || !summary) {
     return <div className="grid flex-1 place-items-center text-sm text-zinc-500">{t.sheets.empty}</div>;
@@ -237,17 +239,17 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
                 <thead>
                   <tr>
                     <th />
-                    {Array.from({ length: grid.maxC }, (_, i) => <th key={i}>{colName(i + 1)}</th>)}
+                    {Array.from({ length: grid.nC }, (_, i) => <th key={i}>{colName(grid.c0 + i)}</th>)}
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.from({ length: grid.maxR }, (_, ri) => {
-                    const r = ri + 1;
+                  {Array.from({ length: grid.nR }, (_, ri) => {
+                    const r = grid.r0 + ri;
                     return (
                       <tr key={r}>
                         <th className="rh">{r}</th>
-                        {Array.from({ length: grid.maxC }, (_, ci) => {
-                          const c = ci + 1;
+                        {Array.from({ length: grid.nC }, (_, ci) => {
+                          const c = grid.c0 + ci;
                           const cell = grid.byPos.get(`${r}:${c}`);
                           const slot = grid.tables.get(`${r}:${c}`);
                           return (
@@ -256,7 +258,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
                               onDown={dragStart} onOver={dragOver}
                               severity={cell ? grid.issues.get(cell.cell_id) : undefined}
                               param={cell ? grid.params.get(cell.cell_id) : undefined}
-                              selected={!!cell && cell.cell_id === selected}
+                              selected={cell ? cell.cell_id === selected : !!anchor && anchor.row === r && anchor.col === c}
                               precedent={!!cell && direct.has(cell.cell_id)}
                               inGroup={!!cell && group != null && cell.group_id === group}
                               focused={!!slot && slot.t.table_id === focusTable}
@@ -268,7 +270,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
                   })}
                 </tbody>
               </table>
-              {grid.capped && <p className="px-3 py-2 text-xs text-zinc-500">{t.sheets.capped(MAX_ROWS, MAX_COLS)}</p>}
+              {grid.capped && <p className="px-3 py-2 text-xs text-zinc-500">{t.sheets.capped(`${colName(grid.c0)}${grid.r0}:${colName(grid.c0 + grid.nC - 1)}${grid.r0 + grid.nR - 1}`)}</p>}
             </>
           )}
         </div>
@@ -292,7 +294,21 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
   );
 }
 
-function buildGrid(sd: SheetData, shownTables: TableInfo[]) {
+/** Row and column of a cell id such as `'My Sheet'!AB12`. */
+function posOf(cellId: string): { row: number; col: number } | null {
+  const m = /^([A-Za-z]+)(\d+)$/.exec(cellId.slice(cellId.lastIndexOf("!") + 1).replace(/\$/g, ""));
+  if (!m) return null;
+  const col = [...m[1].toUpperCase()].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+  return { row: +m[2], col };
+}
+
+/** First index of a window of `size` over 1..extent that contains `at` (centred on it when it has to move). */
+function windowStart(extent: number, size: number, at?: number) {
+  if (!at || at <= size || extent <= size) return 1;
+  return Math.max(1, Math.min(at - Math.floor(size / 2), extent - size + 1));
+}
+
+function buildGrid(sd: SheetData, shownTables: TableInfo[], anchor: { row: number; col: number } | null) {
   const byPos = new Map(sd.cells.map((c) => [`${c.row}:${c.col}`, c]));
   const issues = new Map<string, "high" | "medium" | "low">();
   for (const i of sd.issues) if (!issues.has(i.cell_id) || i.severity === "high") issues.set(i.cell_id, i.severity);
@@ -305,11 +321,16 @@ function buildGrid(sd: SheetData, shownTables: TableInfo[]) {
       tables.set(`${r}:${c}`, { t: tb, part, top: r === top, bottom: r === bottom, left: c === tb.col_start, right: c === tb.col_end });
     }
   }
-  const extentR = Math.max(1, ...sd.cells.map((c) => c.row), ...shownTables.map(tableBottom));
-  const extentC = Math.max(1, ...sd.cells.map((c) => c.col), ...shownTables.map((x) => x.col_end));
+  // A loop, not Math.max(...spread): a big sheet has more cells than a call can take as arguments.
+  let extentR = 1, extentC = 1;
+  for (const c of sd.cells) { if (c.row > extentR) extentR = c.row; if (c.col > extentC) extentC = c.col; }
+  for (const x of shownTables) { extentR = Math.max(extentR, tableBottom(x)); extentC = Math.max(extentC, x.col_end); }
+  // An opened cell may be empty and past the last stored one; still draw it.
+  if (anchor) { extentR = Math.max(extentR, anchor.row); extentC = Math.max(extentC, anchor.col); }
+  const r0 = windowStart(extentR, MAX_ROWS, anchor?.row), c0 = windowStart(extentC, MAX_COLS, anchor?.col);
   return {
-    byPos, issues, params, tables,
-    maxR: Math.min(extentR, MAX_ROWS), maxC: Math.min(extentC, MAX_COLS),
+    byPos, issues, params, tables, r0, c0,
+    nR: Math.min(extentR - r0 + 1, MAX_ROWS), nC: Math.min(extentC - c0 + 1, MAX_COLS),
     capped: extentR > MAX_ROWS || extentC > MAX_COLS,
   };
 }
@@ -352,7 +373,7 @@ function GridCell({ r, c, editing, inSel, onDown, onOver, cell, slot, mode, show
   const mouse = editing
     ? { onMouseDown: (e: React.MouseEvent) => { e.preventDefault(); onDown(r, c); }, onMouseEnter: () => onOver(r, c) }
     : {};
-  if (!cell) return <td className={cls.join(" ")} style={style} {...mouse} />;
+  if (!cell) return <td className={cls.join(" ")} style={style} data-sel={selected || undefined} {...mouse} />;
 
   const formulaShown = cell.vtype === "formula" && (showFormulas || cell.cached === null || cell.cached === undefined);
   if (formulaShown) cls.push("f");

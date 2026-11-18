@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
+import gc
 import hashlib
 import io
 import json
@@ -47,7 +48,8 @@ from ..sample import make_quotation
 from ..store import IR_SCHEMA, TRACE_SQL
 from ..understand import ask
 from ..verify import NOT_UNDERSTOOD
-from . import graph, provenance
+from ..catalog.project import ProjectCatalog
+from . import graph, projects, provenance
 from .basepath import BasePathMiddleware
 from .charts import charts
 from .chat import answer, find_cells
@@ -209,19 +211,115 @@ def list_workbooks():
     return provenance.catalog(data_dir())
 
 
+def _workbook_ids() -> set[str]:
+    """Every stored upload, parsed or not."""
+    return {p.name for p in data_dir().iterdir()
+            if _ID_RE.match(p.name) and ((p / "ir.db").exists() or (p / provenance.MANIFEST).exists())}
+
+
+def _in_project(res: dict, project: str | None) -> dict:
+    """Put an ingested upload into `project` (none: it shows up in "default" unless another project holds it)."""
+    if project:
+        with _project_errors():
+            projects.add(data_dir(), project, res["id"])
+    return res
+
+
+class _project_errors:
+    """Turn projects.ProjectError into the HTTP error it describes."""
+    def __enter__(self):
+        return self
+
+    def __exit__(self, kind, exc, tb):
+        if isinstance(exc, projects.ProjectError):
+            raise HTTPException(exc.status, str(exc)) from exc
+        return False
+
+
 @app.post("/api/workbooks")
-def upload(file: UploadFile, last_modified: int | None = Form(None)):
-    """`last_modified`: the file's modification time on the uploader's machine, in ms since the epoch."""
+def upload(file: UploadFile, last_modified: int | None = Form(None), project: str | None = Form(None)):
+    """`last_modified`: the file's modification time on the uploader's machine, in ms since the epoch. `project`: the
+    project the file is added to."""
+    if project:
+        with _project_errors():
+            projects.workbooks_of(data_dir(), project, set())  # 404 before parsing
     modified = (dt.datetime.fromtimestamp(last_modified / 1000).isoformat(timespec="seconds")
                 if last_modified else None)
-    return _ingest(file.file.read(), file.filename, modified)
+    return _in_project(_ingest(file.file.read(), file.filename, modified), project)
 
 
 @app.post("/api/workbooks/sample")
-def sample():
+def sample(project: str | None = None):
     with tempfile.TemporaryDirectory() as tmp:
         p = make_quotation(Path(tmp) / "quotation_sample.xlsx")
-        return _ingest(p.read_bytes(), p.name)
+        return _in_project(_ingest(p.read_bytes(), p.name), project)
+
+
+# ---- projects ---------------------------------------------------------------------------------------------------------
+
+class ProjectName(BaseModel):
+    name: str
+
+
+class ProjectMember(BaseModel):
+    workbook: str
+    move_from: str | None = None  # the project the workbook leaves, for a move
+
+
+@app.get("/api/projects")
+def list_projects():
+    """Every project with the ids of its workbooks; "default" first, holding every workbook no other project holds."""
+    return projects.listing(data_dir(), _workbook_ids())
+
+
+@app.post("/api/projects")
+def create_project(req: ProjectName):
+    with _project_errors():
+        return projects.create(data_dir(), req.name)
+
+
+@app.patch("/api/projects/{pid}")
+def rename_project(pid: str, req: ProjectName):
+    with _project_errors():
+        return projects.rename(data_dir(), pid, req.name)
+
+
+@app.delete("/api/projects/{pid}")
+def delete_project(pid: str):
+    """Remove a project; its files stay stored, in "default" when no other project holds them."""
+    with _project_errors():
+        projects.delete(data_dir(), pid)
+    return {"deleted": pid}
+
+
+@app.post("/api/projects/{pid}/workbooks")
+def add_to_project(pid: str, req: ProjectMember):
+    """Add a stored workbook (all its versions) to a project, or move it there from `move_from`."""
+    _folder(req.workbook)
+    wids = _versions_of(req.workbook)
+    with _project_errors():
+        for w in wids:
+            projects.add(data_dir(), pid, w)
+            if req.move_from and req.move_from != pid:
+                projects.remove(data_dir(), req.move_from, w)
+    return {"project": pid, "workbooks": wids}
+
+
+@app.delete("/api/projects/{pid}/workbooks/{wid}")
+def remove_from_project(pid: str, wid: str):
+    """Take a workbook (all its versions) out of a project; the files stay stored."""
+    _folder(wid)
+    with _project_errors():
+        for w in _versions_of(wid):
+            projects.remove(data_dir(), pid, w)
+    return {"project": pid, "removed": wid}
+
+
+def _versions_of(wid: str) -> list[str]:
+    """`wid` and the other stored versions of the same file (same name), which move between projects together."""
+    entries = provenance.catalog(data_dir())
+    name = next((e["name"].lower() for e in entries if e["id"] == wid), None)
+    return [e["id"] for e in entries if e["name"].lower() == name] or [wid]
 
 
 @app.get("/api/workbooks/{wid}/summary")
@@ -393,7 +491,9 @@ def apply_fixes(wid: str, req: ApplyFixes):
     if not edits:
         raise HTTPException(400, "none of these cells has a fix that can be applied")
     data = fixes.apply(src, edits)
-    return {**_ingest(data, provenance.read(folder)["name"]), "applied": sorted(edits)}
+    res = _ingest(data, provenance.read(folder)["name"])
+    projects.follow(data_dir(), wid, res["id"])
+    return {**res, "applied": sorted(edits)}
 
 
 @app.get("/api/workbooks/{wid}/resolve")
@@ -424,7 +524,9 @@ def edit_cells(wid: str, req: Edits):
         data = fixes.apply(src, req.edits)
     except (ValueError, KeyError) as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {**_ingest(data, provenance.read(folder)["name"]), "edited": sorted(req.edits)}
+    res = _ingest(data, provenance.read(folder)["name"])
+    projects.follow(data_dir(), wid, res["id"])
+    return {**res, "edited": sorted(req.edits)}
 
 
 class IssueKey(BaseModel):
@@ -541,9 +643,14 @@ def reset_user_tables(wid: str, sheet: str):
 def delete(wid: str):
     """Remove the stored copy and its database (the user's original file is never touched)."""
     folder = _folder(wid)
+    # Endpoints that read ir.db leave their sqlite3 connection to be freed by the garbage collector: a connection and
+    # its statement cache reference each other, so it is not closed when the request ends. On Windows an open
+    # connection keeps the file locked and unlink fails, so collect them first.
+    gc.collect()
     for p in folder.iterdir():
         p.unlink()
     folder.rmdir()
+    projects.forget(data_dir(), wid)
     return {"deleted": wid}
 
 
@@ -686,25 +793,31 @@ def _route(question: str, llm, h: CatalogHandle) -> str:
         return "data"
 
 
-def _chat(wid: str, req: ChatRequest, on_step=None) -> dict:
+def _agent_reply(question: str, catalog, llm, lang: str, on_step) -> dict:
+    r = agent_answer(question, catalog, llm, lang=lang, on_step=on_step)
+    last_sql = r.results[-1]["sql"] if r.results else None
+    return jsonable({
+        "reply": r.answer, "cells": [], "source": "agent", "model": r.model, "route": "data", "sql": last_sql,
+        "grounded": r.grounded, "ungrounded": r.ungrounded, "steps": [s.model_dump() for s in r.steps],
+        "results": [{**x, "rows": x["rows"][:50]} for x in r.results], "chart": r.chart,
+        "provenance": r.provenance, "stopped": r.stopped, "seconds": r.seconds})
+
+
+def _chat(wid: str, req: ChatRequest, on_step=None, route: str | None = None) -> dict:
     """Bare cell ids get the rule-based cell card; with no model, the rules answer. With a model, questions about the
     data go to the agent over the catalog (sheetir.agent), questions about structure and issues to the IR-grounded
-    Q&A (sheetir.understand.ask). If the model path fails, the rules answer and `fallback` says why."""
+    Q&A (sheetir.understand.ask). If the model path fails, the rules answer and `fallback` says why. `route`: the
+    question's route when the caller already knows it."""
     con = _connect(wid)
     llm = get_llm()
     if llm is None or _only_cells(con, req.message):
         return {**answer(con, req.message, req.lang), "source": "rules"}
     try:
         h = _catalog(wid)
-        route = _route(req.message, llm, h) if h is not None and h.cards else "ir"
-        if route == "data":
-            r = agent_answer(req.message, h, llm, lang=req.lang, on_step=on_step)
-            last_sql = r.results[-1]["sql"] if r.results else None
-            return jsonable({
-                "reply": r.answer, "cells": [], "source": "agent", "model": r.model, "route": "data", "sql": last_sql,
-                "grounded": r.grounded, "ungrounded": r.ungrounded, "steps": [s.model_dump() for s in r.steps],
-                "results": [{**x, "rows": x["rows"][:50]} for x in r.results], "chart": r.chart,
-                "provenance": r.provenance, "stopped": r.stopped, "seconds": r.seconds})
+        if route is None:
+            route = _route(req.message, llm, h) if h is not None and h.cards else "ir"
+        if route == "data" and h is not None and h.cards:
+            return _agent_reply(req.message, h, llm, req.lang, on_step)
         r = ask(con, req.message, llm, req.lang)
     except Exception as e:  # any failure of the model path: the user still gets an answer, and the reason
         log.exception("LLM chat failed; answering with the rules")
@@ -729,11 +842,76 @@ def chat_stream(wid: str, req: ChatRequest):
     """Server-sent events: `step` for each agent step ({n, thought, tool, args, result, seconds}) as it finishes,
     then `final` with the body /chat returns (or `error`)."""
     _connect(wid).close()  # 404 before the stream starts
+    return _sse(lambda on_step: _chat(wid, req, on_step=on_step))
+
+
+class ProjectChatRequest(ChatRequest):
+    workbook: str | None = None  # the workbook the user is looking at: cell ids and structure questions are about it
+
+
+def _project_members(pid: str) -> list[tuple[str, str, CatalogHandle]]:
+    """The parsed workbooks of a project that have a catalog, the latest version of each file only, as
+    (id, file name, catalog)."""
+    with _project_errors():
+        wids = set(projects.workbooks_of(data_dir(), pid, _workbook_ids()))
+    out, names = [], set()
+    for e in provenance.catalog(data_dir()):  # most recently uploaded first
+        if e["id"] not in wids or e["status"] == "failed" or e["name"].lower() in names:
+            continue
+        h = _catalog(e["id"])
+        if h is not None and h.cards:
+            names.add(e["name"].lower())
+            out.append((e["id"], e["name"], h))
+    return out
+
+
+def _project_chat(pid: str, req: ProjectChatRequest, on_step=None) -> dict:
+    """Questions about the data go to one agent over the tables of every workbook in the project, so it can compare
+    and join them; everything else (bare cell ids, structure, issues, or no model) is answered about the workbook the
+    user is looking at, as /workbooks/{id}/chat does."""
+    members = _project_members(pid)
+    focus = req.workbook if req.workbook and _ID_RE.match(req.workbook) and (data_dir() / req.workbook / "ir.db").exists() \
+        else (members[0][0] if members else None)
+    llm = get_llm()
+    if len(members) <= 1 or llm is None:
+        if focus is None:
+            raise HTTPException(400, "this project has no parsed workbook to answer from")
+        return {**_chat(focus, req, on_step), "workbook": focus}
+    if focus is not None:
+        con = _connect(focus)
+        try:
+            if _only_cells(con, req.message):
+                return {**_chat(focus, req, on_step), "workbook": focus}
+        finally:
+            con.close()
+    cat = ProjectCatalog(members)
+    try:
+        route = _route(req.message, llm, cat)
+        if route == "data" or focus is None:
+            return _agent_reply(req.message, cat, llm, req.lang, on_step)
+    except Exception as e:  # noqa: BLE001 - as in _chat: the file in view still gets an answer, and the reason
+        log.exception("project agent failed; answering about the workbook in view")
+        if focus is None:
+            raise
+        return {**_chat(focus, req, on_step, route="ir"), "workbook": focus, "fallback": f"{type(e).__name__}: {e}"[:300]}
+    return {**_chat(focus, req, on_step, route=route), "workbook": focus}
+
+
+@app.post("/api/projects/{pid}/chat/stream")
+def project_chat_stream(pid: str, req: ProjectChatRequest):
+    """As /workbooks/{id}/chat/stream, over a whole project (see _project_chat)."""
+    with _project_errors():
+        projects.workbooks_of(data_dir(), pid, set())  # 404 before the stream starts
+    return _sse(lambda on_step: _project_chat(pid, req, on_step=on_step))
+
+
+def _sse(run) -> StreamingResponse:
+    """Run `run(on_step)` in a thread and stream its steps, then its result, as server-sent events."""
     events: queue.Queue = queue.Queue()
 
     def work():
         try:
-            events.put(("final", _chat(wid, req, on_step=lambda s: events.put(("step", s.model_dump())))))
+            events.put(("final", run(lambda s: events.put(("step", s.model_dump())))))
         except Exception as e:  # noqa: BLE001
             events.put(("error", {"error": f"{type(e).__name__}: {e}"[:300]}))
         finally:
