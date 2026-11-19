@@ -43,14 +43,14 @@ function BlockNodeView({ data }: NodeProps<BlockNode>) {
       <span className="absolute inset-y-2 left-0 w-1 rounded-r-full" style={{ background: k.color }} />
       <Handle type="target" position={Position.Left} className="!size-2 !border-0 !bg-white/30" />
       <div className="flex items-center gap-2">
-        <span className="shrink-0 whitespace-nowrap text-[10px] font-medium uppercase tracking-wider" style={{ color: k.color }}>{t.graph.kinds[data.kind]}</span>
-        {data.cells > 1 && <span className="shrink-0 rounded bg-white/5 px-1 font-mono text-[10px] text-zinc-400">×{data.cells}</span>}
-        <span className="ml-auto truncate font-mono text-[10px] text-zinc-500">{data.range}</span>
+        <span className="shrink-0 whitespace-nowrap text-xs font-medium uppercase tracking-wide" style={{ color: k.color }}>{t.graph.kinds[data.kind]}</span>
+        {data.cells > 1 && <span className="shrink-0 rounded bg-white/5 px-1 font-mono text-xs text-zinc-400">×{data.cells}</span>}
+        <span className="ml-auto truncate font-mono text-xs text-zinc-500">{data.range}</span>
       </div>
       <div className="mt-0.5 truncate font-mono text-[12.5px] text-zinc-100">{data.label}</div>
       {data.issues && (
         <span
-          className="absolute -right-2 -top-2 flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-night shadow-lg"
+          className="absolute -right-2 -top-2 flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold text-night shadow-lg"
           style={{ background: SEV_COLOR[data.issues.severity] }}
         >
           <AlertTriangle className="size-2.5" />
@@ -237,7 +237,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
             className="w-80 shrink-0 overflow-y-auto border-l border-white/10 bg-zinc-950/80 p-5"
           >
             <div className="flex items-start justify-between gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: KIND[selectedNode.kind].color }}>
+              <span className="text-xs font-medium uppercase tracking-wider" style={{ color: KIND[selectedNode.kind].color }}>
                 {t.graph.kinds[selectedNode.kind]}{selectedNode.cells > 1 ? t.graph.cells(selectedNode.cells) : ""}
               </span>
               <button onClick={() => setSelected(null)} className="rounded-lg p-1 text-zinc-500 hover:bg-white/5 hover:text-white">
@@ -260,7 +260,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
                 <Field label={t.graph.issues}>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedNode.issues.kinds.map((k) => (
-                      <span key={k} className="rounded-md px-1.5 py-0.5 font-mono text-[11px]" style={{ background: `${SEV_COLOR[selectedNode.issues!.severity]}22`, color: (theme === "light" ? SEV_TEXT_LIGHT : SEV_COLOR)[selectedNode.issues!.severity] }}>{k}</span>
+                      <span key={k} className="rounded-md px-1.5 py-0.5 font-mono text-xs" style={{ background: `${SEV_COLOR[selectedNode.issues!.severity]}22`, color: (theme === "light" ? SEV_TEXT_LIGHT : SEV_COLOR)[selectedNode.issues!.severity] }}>{k}</span>
                     ))}
                   </div>
                 </Field>
@@ -293,7 +293,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
 function Field({ label, mono, children }: { label: string; mono?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-[11px] text-zinc-500">{label}</dt>
+      <dt className="text-xs text-zinc-500">{label}</dt>
       <dd className={`mt-0.5 break-all text-zinc-200 ${mono ? "rounded-lg bg-white/[0.04] px-2 py-1 font-mono text-xs" : ""}`}>{children}</dd>
     </div>
   );

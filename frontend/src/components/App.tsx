@@ -263,6 +263,8 @@ function Shell() {
       />
 
       <main className="relative flex min-w-0 flex-1 flex-col">
+        {/* Always mounted, so screen readers announce the notices put in it (WCAG 4.1.3) */}
+        <div aria-live="polite">
         {backendDown && (
           <div className="mx-6 mt-4 rounded-md border border-amber-400/20 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-100">
             {t.app.backendDown}
@@ -281,9 +283,10 @@ function Shell() {
                 {t.upload.seeReport}
               </button>
             )}
-            <button onClick={() => setNotice(null)} aria-label="close" className="text-cyan-200/70 hover:text-white">✕</button>
+            <button onClick={() => setNotice(null)} aria-label={t.app.close} className="text-cyan-200/70 hover:text-white">✕</button>
           </div>
         )}
+        </div>
         {project && (
           <ContextBar
             // Views about one file show where they are (project › file); the chat is about the whole project and says

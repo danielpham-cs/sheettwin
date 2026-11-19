@@ -4,7 +4,6 @@
 const zh = {
   nav: { features: "功能", how: "運作方式", issues: "偵測問題", open: "開啟 App", toLight: "切換到淺色模式", toDark: "切換到深色模式" },
   hero: {
-    badge: "SheetIR v0.1 · 概念驗證",
     title1: "讓每一張 Excel 試算表",
     title2: "看得懂、查得到、信得過",
     sub: "SheetTwin 把企業試算表解析成可查詢的結構化模型，自動找出公式錯誤，並用對話、依賴圖和圖表解釋每一個數字是怎麼來的。",
@@ -83,7 +82,7 @@ const zh = {
     title: "看看你的試算表裡藏了什麼",
     sub: "上傳一份活頁簿，幾秒內就能看到它的結構和問題。",
   },
-  footer: { legacy: "結構瀏覽器", note: "SheetTwin · SheetIR 概念驗證 · 所有分析都在本機進行" },
+  footer: { legacy: "結構瀏覽器", note: "SheetTwin · Information Is Ready 團隊 · 成大 IIR 實驗室 · 所有分析都在本機進行" },
   shotAlt: {
     chat: "聊天介面：列出範例報價單偵測到的問題",
     graph: "依賴圖：範例報價單的資料流總覽",
@@ -95,7 +94,6 @@ const zh = {
 const en: typeof zh = {
   nav: { features: "Features", how: "How it works", issues: "What it finds", open: "Open app", toLight: "Switch to light mode", toDark: "Switch to dark mode" },
   hero: {
-    badge: "SheetIR v0.1 · proof of concept",
     title1: "Make every spreadsheet",
     title2: "understandable, traceable, trustworthy",
     sub: "SheetTwin turns business spreadsheets into a queryable, structured model, finds formula errors automatically, and explains where every number comes from through chat, a dependency graph and charts.",
@@ -174,7 +172,7 @@ const en: typeof zh = {
     title: "See what's hiding in your spreadsheets",
     sub: "Upload a workbook and see its structure and issues in seconds.",
   },
-  footer: { legacy: "Structure browser", note: "SheetTwin · SheetIR proof of concept · all analysis runs locally" },
+  footer: { legacy: "Structure browser", note: "SheetTwin · by Information Is Ready · IIR Lab, NCKU · all analysis runs locally" },
   shotAlt: {
     chat: "Chat: the issues found in the sample quotation",
     graph: "Dependency graph: overview of the sample quotation's data flow",

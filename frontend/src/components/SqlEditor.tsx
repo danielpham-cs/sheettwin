@@ -23,6 +23,8 @@ type Props = {
   onError: (message: string | null) => void;
   schema: SqlSchema;
   didYouMean: (word: string) => string;
+  /** The editor's accessible name, read by screen readers. */
+  label: string;
   ref?: Ref<SqlEditorHandle>;
 };
 
@@ -176,10 +178,11 @@ const highlight = HighlightStyle.define([
 ]);
 
 /** A SQL editor with schema-aware completion and SQLite's own errors marked as you type. */
-export function SqlEditor({ value, onChange, onRun, check, onError, schema, didYouMean, ref }: Props) {
+export function SqlEditor({ value, onChange, onRun, check, onError, schema, didYouMean, label, ref }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
+  const a11y = useRef(new Compartment());
   // Latest props for the editor's callbacks, which are created once.
   const props = useRef({ onChange, onRun, check, onError, schema, didYouMean });
   useEffect(() => { props.current = { onChange, onRun, check, onError, schema, didYouMean }; });
@@ -203,6 +206,7 @@ export function SqlEditor({ value, onChange, onRun, check, onError, schema, didY
           lineNumbers(), highlightActiveLine(), history(), bracketMatching(), closeBrackets(),
           autocompletion({ icons: false }),
           language.current.of(sqlFor(props.current.schema)),
+          a11y.current.of(EditorView.contentAttributes.of({ "aria-label": label })),
           syntaxHighlighting(highlight), theme, lint, lintGutter(),
           Prec.highest(keymap.of([{ key: "Mod-Enter", run: () => { props.current.onRun(); return true; } }])),
           keymap.of([...closeBracketsKeymap, ...completionKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
@@ -223,6 +227,11 @@ export function SqlEditor({ value, onChange, onRun, check, onError, schema, didY
   useEffect(() => {
     view.current?.dispatch({ effects: language.current.reconfigure(sqlFor(schema)) });
   }, [schema]);
+
+  // The name follows the UI language.
+  useEffect(() => {
+    view.current?.dispatch({ effects: a11y.current.reconfigure(EditorView.contentAttributes.of({ "aria-label": label })) });
+  }, [label]);
 
   useImperativeHandle(ref, () => ({
     insert(text: string) {

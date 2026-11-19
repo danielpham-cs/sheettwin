@@ -4,6 +4,7 @@ import { CircleAlert, CircleCheck, Copy, FlaskConical, Loader2, UploadCloud, X }
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type IngestResult } from "@/lib/api";
+import { useDialogFocus } from "@/lib/dialog-focus";
 import { useI18n } from "@/lib/i18n";
 
 type Props = {
@@ -26,6 +27,7 @@ export function UploadDialog({ open, project, onClose, onDone, onDoneMany }: Pro
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const input = useRef<HTMLInputElement>(null);
+  const box = useDialogFocus<HTMLDivElement>(open);
 
   useEffect(() => {
     if (!open) return;
@@ -99,6 +101,11 @@ export function UploadDialog({ open, project, onClose, onDone, onDoneMany }: Pro
           onClick={() => !busy && close()}
         >
           <motion.div
+            ref={box}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="upload-title"
+            tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
             initial={{ opacity: 0, scale: 0.95, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -108,10 +115,10 @@ export function UploadDialog({ open, project, onClose, onDone, onDoneMany }: Pro
           >
             <div className="mb-5 flex items-start justify-between">
               <div>
-                <h2 className="text-lg font-semibold">{t.upload.title}</h2>
+                <h2 id="upload-title" className="text-lg font-semibold">{t.upload.title}</h2>
                 <p className="mt-1 text-sm text-zinc-400">{t.upload.intro}</p>
               </div>
-              <button onClick={close} disabled={!!busy} className="rounded-lg p-1.5 text-zinc-500 hover:bg-white/5 hover:text-white">
+              <button onClick={close} disabled={!!busy} aria-label={t.app.close} className="rounded-lg p-1.5 text-zinc-500 hover:bg-white/5 hover:text-white">
                 <X className="size-5" />
               </button>
             </div>

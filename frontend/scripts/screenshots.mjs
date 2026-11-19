@@ -15,9 +15,11 @@ const OUT = resolve(dirname(fileURLToPath(import.meta.url)), "../public/screensh
 const VIEWPORT = { width: 1440, height: 900 };
 
 // UI labels the script clicks, per language (they mirror src/lib/i18n.tsx).
+// `ask`: the chat shot's question when a language model is set up (its answer draws a chart); without one the shot
+// uses the "find issues" suggestion, which the built-in rules answer.
 const LABELS = {
-  zh: { issues: "找出問題", graph: "依賴圖", charts: "圖表", exports: "轉換檔案", exportsReady: "SheetIR 資料庫" },
-  en: { issues: "Find issues", graph: "Dependency graph", charts: "Charts", exports: "Converted files", exportsReady: "SheetIR database" },
+  zh: { ask: "畫一張長條圖比較各產品的單位成本，用一句話說明重點", issues: "找出問題", graph: "依賴圖", charts: "圖表", exports: "轉換檔案", exportsReady: "SheetIR 資料庫" },
+  en: { ask: "Draw a bar chart of each product's unit cost, and sum up the key point in one sentence", issues: "Find issues", graph: "Dependency graph", charts: "Charts", exports: "Converted files", exportsReady: "SheetIR database" },
 };
 
 const BROWSERS = [
@@ -42,14 +44,19 @@ if (!res?.ok) {
   process.exit(1);
 }
 
+const llm = await fetch(`${BASE}/api/llm`).then((r) => r.json(), () => null);
+console.log(llm?.enabled ? `chat shot: asking ${llm.model} for a chart` : "chat shot: no language model, using the built-in rules");
+
 const browser = await chromium.launch({ executablePath });
 for (const [lang, L] of Object.entries(LABELS)) {
   mkdirSync(resolve(OUT, lang), { recursive: true });
   const ctx = await browser.newContext({ viewport: VIEWPORT });
-  // Fresh chat history, fixed language.
+  // Fresh chat history, fixed language, dark theme (the landing page shows one set of shots in both themes).
   await ctx.addInitScript((l) => {
     localStorage.setItem("sheettwin.lang", l);
+    localStorage.setItem("sheettwin.theme", "dark");
     localStorage.removeItem("sheettwin.chats");
+    localStorage.removeItem("sheettwin.project");
   }, lang);
   const page = await ctx.newPage();
   const save = async (name) => {
@@ -59,10 +66,30 @@ for (const [lang, L] of Object.entries(LABELS)) {
     console.log(`  ${lang}/${name}.jpg`);
   };
 
-  await page.goto(`${BASE}/app/`);
-  await page.getByText(L.issues, { exact: true }).click();
-  await page.locator(".md table").first().waitFor();
-  await page.waitForTimeout(1200);
+  // A model words its answer differently each time: ask again (fresh chat) until it is a chart with no long table,
+  // which fits the screen; keep the last try otherwise.
+  for (let attempt = 1; attempt <= (llm?.enabled ? 3 : 1); attempt++) {
+    if (attempt > 1) await page.evaluate(() => localStorage.removeItem("sheettwin.chats"));
+    await page.goto(`${BASE}/app/`);
+    if (llm?.enabled) {
+      await page.locator("textarea").fill(L.ask);
+      await page.keyboard.press("Enter");
+    } else {
+      await page.getByText(L.issues, { exact: true }).click();
+    }
+    // The answer is done when the chat log is no longer busy (its form depends on the model: a table, a list…).
+    await page.locator('[role="log"][aria-busy="false"] .md').first().waitFor({ timeout: 240_000 });
+    await page.waitForTimeout(1500);
+    if (!llm?.enabled) break;
+    const charted = await page.evaluate(() => !!document.querySelector('[role="log"] .recharts-wrapper') && !document.querySelector('[role="log"] .md table'));
+    if (charted) break;
+    console.log(`  ${lang}: answer ${attempt} has no chart or has a table, asking again`);
+  }
+  // Show the conversation from the question down, with no focus ring on the composer.
+  await page.evaluate(() => {
+    document.querySelector('[role="log"]').parentElement.scrollTop = 0;
+    document.activeElement?.blur();
+  });
   await save("chat");
 
   await page.getByLabel(L.graph, { exact: true }).click();

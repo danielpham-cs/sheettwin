@@ -115,7 +115,7 @@ export function QueryView({ workbookId, workbookName, onOpenCell }: Props) {
           <span className="text-xs text-zinc-500">{t.query.presets}:</span>
           {PRESETS.map(([key, sql]) => (
             <button key={key} onClick={() => { setQuery(sql); run(sql); }}
-              className={`rounded-full border px-2.5 py-0.5 text-xs transition ${query === sql ? "border-blue-400/50 bg-blue-500/15 text-white" : "border-white/10 text-zinc-300 hover:bg-white/5"}`}>
+              className={`rounded-full border px-2.5 py-1 text-xs transition ${query === sql ? "border-blue-400/50 bg-blue-500/15 text-white" : "border-white/10 text-zinc-300 hover:bg-white/5"}`}>
               {t.query.presetNames[key] ?? key}
             </button>
           ))}
@@ -123,7 +123,7 @@ export function QueryView({ workbookId, workbookName, onOpenCell }: Props) {
 
         <div className="field rounded-lg bg-surface/90">
           <SqlEditor ref={editor} value={query} onChange={setQuery} onRun={() => run()} check={check} onError={setLintError}
-            schema={completionSchema} didYouMean={t.query.didYouMean} />
+            schema={completionSchema} didYouMean={t.query.didYouMean} label={t.query.title} />
           <div className="flex items-center gap-3 border-t border-white/5 px-3 py-2">
             <button onClick={() => run()} disabled={running}
               className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1 text-sm font-medium text-snow shadow-lg disabled:opacity-60">
@@ -158,7 +158,7 @@ export function QueryView({ workbookId, workbookName, onOpenCell }: Props) {
                       return (
                         <td key={j} className="max-w-md truncate px-3 py-1.5 font-mono text-zinc-300" title={s}>
                           {CELL_RE.test(s)
-                            ? <button onClick={() => onOpenCell(s)} title={t.query.openCell(s)} className="text-blue-300 hover:text-blue-200 hover:underline">{s}</button>
+                            ? <button onClick={() => onOpenCell(s)} title={t.query.openCell(s)} className="-my-1 py-1 text-blue-300 hover:text-blue-200 hover:underline">{s}</button>
                             : v === null ? <span className="text-zinc-600">NULL</span> : s}
                         </td>
                       );
@@ -177,13 +177,13 @@ export function QueryView({ workbookId, workbookName, onOpenCell }: Props) {
         <div className="space-y-3">
           {schema.map((s) => (
             <div key={s.name}>
-              <button onClick={() => insert(s.name)} className="font-mono text-[12.5px] text-blue-300 hover:text-blue-200">
-                {s.name}{s.type === "view" && <span className="ml-1 font-sans text-[10px] text-zinc-500">view</span>}
+              <button onClick={() => insert(s.name)} className="py-1 font-mono text-[12.5px] text-blue-300 hover:text-blue-200">
+                {s.name}{s.type === "view" && <span className="ml-1 font-sans text-[11px] text-zinc-500">view</span>}
               </button>
               {s.columns.length > 0 && (
-                <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 pl-2">
+                <div className="flex flex-wrap gap-x-2 pl-2">
                   {s.columns.map((c) => (
-                    <button key={c} onClick={() => insert(c)} className="font-mono text-[11.5px] text-zinc-500 hover:text-zinc-200">{c}</button>
+                    <button key={c} onClick={() => insert(c)} className="py-1 font-mono text-[11.5px] text-zinc-500 hover:text-zinc-200">{c}</button>
                   ))}
                 </div>
               )}

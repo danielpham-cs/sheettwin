@@ -221,7 +221,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
                   <span className="size-2 rounded-full" style={{ background: tableColor(tb) }} />
                   {tb.name}
                   <span className="text-zinc-500">{rangeA1(tb)} · {t.sheets.rows(tb.row_end - tb.row_start + 1)}</span>
-                  {tb.source === "user" && <span className="rounded bg-blue-500/20 px-1 text-[10px] text-blue-200">{t.sheets.edit.edited}</span>}
+                  {tb.source === "user" && <span className="rounded bg-blue-500/20 px-1 text-[11px] text-blue-200">{t.sheets.edit.edited}</span>}
                 </button>
               ))}
             </>
