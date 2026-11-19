@@ -108,10 +108,7 @@ function Page() {
         {/* Hero */}
         <section className="mx-auto max-w-6xl px-6 pb-20 pt-16 text-center sm:pt-24">
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs text-blue-200">
-              <span className="size-1.5 animate-pulse rounded-full bg-blue-300" />{c.hero.badge}
-            </span>
-            <h1 className="mx-auto mt-6 max-w-4xl text-[1.8rem] font-semibold leading-tight tracking-tight sm:text-6xl">
+            <h1 className="mx-auto max-w-4xl text-[1.8rem] font-semibold leading-tight tracking-tight sm:text-6xl">
               {c.hero.title1}
               <br />
               <span className="text-accent">{c.hero.title2}</span>
@@ -210,7 +207,7 @@ function Page() {
                 <motion.div key={s.title} {...fadeUp} transition={{ ...fadeUp.transition, delay: i * 0.1 }} className="relative text-center">
                   <span className="relative mx-auto grid size-12 place-items-center rounded-lg bg-zinc-900 text-blue-200 ring-1 ring-blue-400/30 shadow-lg">
                     <Icon className="size-5" />
-                    <span className="absolute -right-2 -top-2 grid size-5 place-items-center rounded-full bg-blue-600 text-[10px] font-semibold text-snow">{i + 1}</span>
+                    <span className="absolute -right-2 -top-2 grid size-5 place-items-center rounded-full bg-blue-600 text-[11px] font-semibold text-snow">{i + 1}</span>
                   </span>
                   <h3 className="mt-4 font-medium text-white">{s.title}</h3>
                   <p className="mx-auto mt-1.5 max-w-[15rem] text-sm leading-relaxed text-zinc-400">{s.body}</p>

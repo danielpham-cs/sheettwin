@@ -117,7 +117,7 @@ function ReplyMeta({ meta }: { meta: NonNullable<Message["meta"]> }) {
       {meta.sql && (
         <details className="group">
           <summary className="cursor-pointer select-none text-zinc-500 transition hover:text-zinc-300">{t.chat.showSql}</summary>
-          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-black/40 p-3 font-mono text-[11.5px] text-zinc-300">{meta.sql}</pre>
+          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-black/40 p-3 font-mono text-xs text-zinc-300">{meta.sql}</pre>
         </details>
       )}
     </div>
@@ -146,7 +146,7 @@ function StepLine({ step }: { step: AgentStep }) {
           <span className="text-zinc-600"> · {step.seconds}s</span>
         </p>
         {step.thought && <p className="text-zinc-500">{step.thought}</p>}
-        {sql && <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded-md bg-black/40 p-2 font-mono text-[11px] text-zinc-300">{sql}</pre>}
+        {sql && <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded-md bg-black/40 p-2 font-mono text-xs text-zinc-300">{sql}</pre>}
         {err && <p className="mt-1 text-amber-300/90">{t.chat.agent.error}: {err}</p>}
       </div>
     </li>
@@ -238,7 +238,7 @@ function AgentMeta({ meta, onOpenSource }: { meta: NonNullable<Message["meta"]>;
                 key={`${p.workbook_id ?? ""}|${p.sheet}!${p.range}`}
                 title={`${p.workbook ? `${p.workbook} · ` : ""}${p.table_title ?? ""} · ${t.chat.agent.openSource}`}
                 onClick={() => onOpenSource(firstCell(p), p.workbook_id)}
-                className="flex items-center gap-1 rounded-md border border-emerald-400/15 bg-emerald-500/[0.07] px-2 py-0.5 font-mono text-[11px] text-emerald-200 transition hover:bg-emerald-500/20"
+                className="flex items-center gap-1 rounded-md border border-emerald-400/15 bg-emerald-500/[0.07] px-2 py-0.5 font-mono text-xs text-emerald-200 transition hover:bg-emerald-500/20"
               >
                 <FileSpreadsheet className="size-3" />{p.workbook && <span className="font-sans text-emerald-300/70">{p.workbook} ·</span>}{p.sheet}!{p.range}
               </button>
@@ -325,7 +325,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Header */}
-      <header className="flex items-center gap-4 border-b border-white/5 px-6 py-3.5">
+      <header className="flex items-center gap-3 border-b border-white/5 px-3 py-3 sm:gap-4 sm:px-6 sm:py-3.5">
         {context ? (
           <>
             <ProjectBadge project={context.project} size="lg" />
@@ -384,13 +384,14 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
 
       {/* Messages */}
       <div ref={scroller} className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-6 pb-40 pt-8">
+        {/* A live log: screen readers read each new message; aria-busy holds the answer back until it is complete */}
+        <div role="log" aria-live="polite" aria-busy={pending} className="mx-auto w-full max-w-3xl px-3 pb-40 pt-6 sm:px-6 sm:pt-8">
           {messages.length === 0 ? (
             <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
               <div className="mb-5 grid size-12 place-items-center rounded-lg bg-white/[0.04] ring-1 ring-white/10">
                 <Bot className="size-6 text-blue-300" />
               </div>
-              <h3 className="text-3xl font-semibold tracking-tight">
+              <h3 className="text-2xl font-semibold tracking-tight sm:text-3xl">
                 {context && summary ? <span className="text-accent">{t.projects.askAbout(pname!)}</span>
                   : summary ? t.chat.askAbout(<span className="text-accent">{summary.name}</span>) : <span className="text-accent">{t.chat.hero}</span>}
               </h3>
@@ -544,8 +545,8 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
       </div>
 
       {/* Composer */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-canvas via-canvas/90 to-transparent pb-6 pt-16">
-        <div className="pointer-events-auto mx-auto w-full max-w-3xl px-6">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-canvas via-canvas/90 to-transparent pb-3 pt-16 sm:pb-6">
+        <div className="pointer-events-auto mx-auto w-full max-w-3xl px-3 sm:px-6">
           {context && context.files.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
               <span className="flex items-center gap-1.5 text-zinc-500"><ProjectBadge project={context.project} size="sm" />{t.projects.context}:</span>
@@ -556,7 +557,7 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                     className={`inline-flex max-w-[16rem] items-center gap-1 rounded-md border px-2 py-0.5 ${inView ? "border-blue-400/40 bg-blue-500/10 text-blue-100" : "border-white/10 bg-white/[0.04] text-zinc-300"}`}>
                     <FileSpreadsheet className="size-3 shrink-0 text-emerald-300" />
                     <span className="truncate">{w.name}</span>
-                    {inView && context.files.length > 1 && <span className="shrink-0 text-[10px] text-blue-300">· {t.projects.inView}</span>}
+                    {inView && context.files.length > 1 && <span className="shrink-0 text-xs text-blue-300">· {t.projects.inView}</span>}
                   </span>
                 );
               })}
@@ -568,8 +569,8 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
               )}
             </div>
           )}
-          <div className="field flex items-end gap-2 rounded-xl bg-zinc-900/80 p-2 pl-5 shadow-2xl shadow-black/50">
-            <Crosshair className="mb-3 size-4 shrink-0 text-zinc-600" />
+          <div className="field flex items-end gap-2 rounded-xl bg-zinc-900/80 p-1.5 pl-3 shadow-2xl shadow-black/50 sm:p-2 sm:pl-5">
+            <Crosshair className="mb-3 hidden size-4 shrink-0 text-zinc-600 sm:block" />
             <textarea
               ref={box}
               rows={1}
@@ -589,12 +590,12 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
               onClick={() => submit()}
               disabled={disabled || !draft.trim()}
               aria-label={t.chat.send}
-              className="grid size-10 shrink-0 place-items-center rounded-lg bg-blue-600 text-snow shadow-lg transition enabled:hover:bg-blue-500 disabled:from-zinc-700 disabled:to-zinc-700 disabled:text-zinc-500 disabled:shadow-none"
+              className="grid size-9 shrink-0 place-items-center rounded-lg bg-blue-600 sm:size-10 text-snow shadow-lg transition enabled:hover:bg-blue-500 disabled:from-zinc-700 disabled:to-zinc-700 disabled:text-zinc-500 disabled:shadow-none"
             >
               <ArrowUp className="size-5" />
             </button>
           </div>
-          <p className="mt-2 text-center text-[11px] text-zinc-600">{t.chat.footer}</p>
+          <p className="mt-2 hidden text-center text-xs text-zinc-600 sm:block">{t.chat.footer}</p>
         </div>
       </div>
     </div>

@@ -32,12 +32,12 @@ function MoveMenu({ projects, current, onMove }: { projects: Project[]; current:
   return (
     <div ref={box} className="relative">
       <button onClick={() => setOpen((o) => !o)} title={t.projects.moveTo} aria-label={t.projects.moveTo}
-        className={`rounded-md p-1 text-zinc-500 hover:bg-white/10 hover:text-white ${open ? "block" : "hidden group-hover:block"}`}>
+        className={`rounded-md p-1 text-zinc-500 hover:bg-white/10 hover:text-white ${open ? "block" : "hidden focus:block group-hover:block group-focus-within:block"}`}>
         <FolderInput className="size-3.5" />
       </button>
       {open && (
         <ul className="absolute right-0 top-full z-50 mt-1 w-48 rounded-md border border-white/10 bg-zinc-900 py-1 text-sm shadow-xl">
-          <li className="px-3 py-1 text-[10px] uppercase tracking-wider text-zinc-500">{t.projects.moveTo}</li>
+          <li className="px-3 py-1 text-[11px] uppercase tracking-wider text-zinc-500">{t.projects.moveTo}</li>
           {others.map((p) => (
             <li key={p.id}>
               <button onClick={() => { setOpen(false); onMove(p.id); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-zinc-200 hover:bg-white/10">
@@ -65,26 +65,33 @@ type Props = ProjectControls & {
   onRemove: (id: string) => void;
 };
 
+// On short screens the rail drops its text labels so every button still fits.
+const SHORT_SCREEN_HIDE = "[@media(max-height:680px)]:hidden";
+
 function RailButton({
-  label, active, onClick, children, accent,
-}: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode; accent?: boolean }) {
+  label, short, active, onClick, children, accent,
+}: { label: string; short?: string; active?: boolean; onClick: () => void; children: React.ReactNode; accent?: boolean }) {
   return (
     <button
       onClick={onClick}
       aria-label={label}
       aria-current={active ? "page" : undefined}
-      className={`group relative grid size-11 place-items-center rounded-lg transition-all duration-200
+      className={`group relative flex shrink-0 flex-col items-center justify-center gap-1 rounded-lg transition-all duration-200
+        ${short ? "h-[52px] w-14 sm:w-16 [@media(max-height:680px)]:size-11" : "size-11"}
         ${accent
           ? "bg-blue-600 text-snow shadow-lg hover:bg-blue-500"
           : active
             ? "bg-blue-500/20 text-blue-100 ring-1 ring-blue-400/50 shadow-md"
             : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
     >
-      {/* Marker on the rail's left edge (the rail is 72px, the button 44px: 14px each side) */}
+      {/* Marker on the rail's left edge (rail 60/72px, labelled button 56/64px: 2/4px each side) */}
       {active && !accent && (
-        <span className="absolute -left-[14px] top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-blue-500" />
+        <span className="absolute -left-[2px] top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-blue-500 sm:-left-[4px] [@media(max-height:680px)]:hidden" />
       )}
       {children}
+      {short && (
+        <span aria-hidden className={`max-w-full truncate px-0.5 text-[11px] leading-none font-medium ${SHORT_SCREEN_HIDE}`}>{short}</span>
+      )}
       <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-lg border border-white/10 bg-zinc-900/95 px-2.5 py-1 text-xs text-zinc-100 opacity-0 shadow-xl transition-all duration-150 group-hover:translate-x-0.5 group-hover:opacity-100">
         {label}
       </span>
@@ -115,43 +122,43 @@ export function Sidebar({ knowledge, workbooks, activeId, panel, view, onView, o
   return (
     <div className="flex h-full shrink-0">
       {/* Icon rail */}
-      <nav className="flex w-[72px] flex-col items-center gap-3 border-r border-white/5 bg-black/30 py-5">
-        <Link href="/" aria-label="SheetTwin" title="SheetTwin" className="mb-3 grid size-10 place-items-center rounded-md transition hover:opacity-85">
+      <nav className="flex w-[60px] flex-col items-center gap-1.5 border-r border-white/5 bg-black/30 py-4 sm:w-[72px] [@media(max-height:680px)]:gap-2">
+        <Link href="/" aria-label="SheetTwin" title="SheetTwin" className="mb-2 grid size-10 shrink-0 place-items-center rounded-md transition hover:opacity-85">
           <Logo className="size-9" />
         </Link>
-        <RailButton label={t.nav.newData} onClick={onNewData} accent>
+        <RailButton label={t.nav.newData} short={t.navShort.newData} onClick={onNewData} accent>
           <FilePlus2 className="size-5" />
         </RailButton>
-        <RailButton label={t.nav.exports} onClick={onToggleExports} active={panel === "exports"}>
+        <RailButton label={t.nav.exports} short={t.navShort.exports} onClick={onToggleExports} active={panel === "exports"}>
           <FolderOutput className="size-5" />
         </RailButton>
-        <span className="my-1 h-px w-8 bg-white/10" />
-        <RailButton label={t.nav.chat} onClick={() => onView("chat")} active={view === "chat" && !panel}>
+        <span className="my-1 h-px w-8 shrink-0 bg-white/10" />
+        <RailButton label={t.nav.chat} short={t.navShort.chat} onClick={() => onView("chat")} active={view === "chat" && !panel}>
           <MessageSquareText className="size-5" />
         </RailButton>
-        <RailButton label={t.nav.sheets} onClick={() => onView("sheets")} active={view === "sheets" && !panel}>
+        <RailButton label={t.nav.sheets} short={t.navShort.sheets} onClick={() => onView("sheets")} active={view === "sheets" && !panel}>
           <Grid3x3 className="size-5" />
         </RailButton>
-        <RailButton label={t.nav.issues} onClick={() => onView("issues")} active={view === "issues" && !panel}>
+        <RailButton label={t.nav.issues} short={t.navShort.issues} onClick={() => onView("issues")} active={view === "issues" && !panel}>
           <ListChecks className="size-5" />
         </RailButton>
-        <RailButton label={t.nav.query} onClick={() => onView("query")} active={view === "query" && !panel}>
+        <RailButton label={t.nav.query} short={t.navShort.query} onClick={() => onView("query")} active={view === "query" && !panel}>
           <Database className="size-5" />
         </RailButton>
-        <RailButton label={t.nav.graph} onClick={() => onView("graph")} active={view === "graph" && !panel}>
+        <RailButton label={t.nav.graph} short={t.navShort.graph} onClick={() => onView("graph")} active={view === "graph" && !panel}>
           <Network className="size-5" />
         </RailButton>
-        <RailButton label={t.nav.charts} onClick={() => onView("charts")} active={view === "charts" && !panel}>
+        <RailButton label={t.nav.charts} short={t.navShort.charts} onClick={() => onView("charts")} active={view === "charts" && !panel}>
           <ChartPie className="size-5" />
         </RailButton>
-        <div className="mt-auto flex flex-col gap-3">
+        <div className="mt-auto flex flex-col gap-2">
           <RailButton label={theme === "light" ? t.nav.toDark : t.nav.toLight} onClick={toggleTheme}>
             {theme === "light" ? <Moon className="size-5" /> : <Sun className="size-5" />}
           </RailButton>
           <RailButton label={`${t.nav.language}: ${t.toggle}`} onClick={() => setLang(lang === "zh" ? "en" : "zh")}>
             <span className="flex flex-col items-center leading-none">
               <Languages className="size-4" />
-              <span className="mt-1 text-[10px] font-semibold tracking-wide">{lang === "zh" ? "EN" : "中"}</span>
+              <span className="mt-1 text-[11px] font-semibold tracking-wide">{lang === "zh" ? "EN" : "中"}</span>
             </span>
           </RailButton>
         </div>
@@ -221,7 +228,7 @@ export function Sidebar({ knowledge, workbooks, activeId, panel, view, onView, o
                         <StatusBadge status={shownVersion.status} compact />
                         <span className="truncate text-sm">{shownVersion.name}</span>
                         {versions.length > 1 && (
-                          <span className="shrink-0 rounded-md bg-white/5 px-1.5 text-[10px] text-zinc-400 ring-1 ring-white/10">v{shownVersion.version}/{versions.length}</span>
+                          <span className="shrink-0 rounded-md bg-white/5 px-1.5 text-[11px] text-zinc-400 ring-1 ring-white/10">v{shownVersion.version}/{versions.length}</span>
                         )}
                       </span>
                       <span className="block truncate text-[11px] text-zinc-500">
@@ -244,24 +251,24 @@ export function Sidebar({ knowledge, workbooks, activeId, panel, view, onView, o
                     </button>
                   ) : (
                     <button onClick={() => remove(shownVersion)} title={t.sidebar.remove} aria-label={t.sidebar.remove}
-                      className="relative mr-1.5 hidden rounded-md p-1 text-zinc-500 hover:bg-white/10 hover:text-rose-300 group-hover:block">
+                      className="relative mr-1.5 hidden rounded-md p-1 text-zinc-500 hover:bg-white/10 hover:text-rose-300 focus:block group-hover:block group-focus-within:block">
                       <Trash2 className="size-3.5" />
                     </button>
                   )}
                 </div>
                 {open && (
                   <ul className="ml-6 mt-1 space-y-0.5 border-l border-white/10 pl-2">
-                    <li className="px-2 pb-0.5 text-[10px] uppercase tracking-wider text-zinc-600">{t.sidebar.versions(versions.length)}</li>
+                    <li className="px-2 pb-0.5 text-[11px] uppercase tracking-wider text-zinc-600">{t.sidebar.versions(versions.length)}</li>
                     {versions.map((w) => (
                       <li key={w.id} className={`group/v flex items-center rounded-lg ${w.id === activeId ? "bg-white/[0.06] text-white" : "text-zinc-400 hover:bg-white/[0.04]"}`}>
                         <button onClick={() => onSelect(w.id)} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1 text-left text-xs">
                           <StatusBadge status={w.status} compact />
                           <span className="font-medium">v{w.version}</span>
                           <span className="truncate text-zinc-500">{when(w.first_uploaded)}</span>
-                          <span className="ml-auto font-mono text-[10.5px] text-zinc-600">{w.id.slice(0, 7)}</span>
+                          <span className="ml-auto font-mono text-[11px] text-zinc-600">{w.id.slice(0, 7)}</span>
                         </button>
                         <button onClick={() => remove(w)} title={t.sidebar.remove} aria-label={t.sidebar.remove}
-                          className="mr-1 hidden rounded p-0.5 text-zinc-500 hover:text-rose-300 group-hover/v:block">
+                          className="mr-1 hidden rounded p-0.5 text-zinc-500 hover:text-rose-300 focus:block group-hover/v:block group-focus-within/v:block">
                           <Trash2 className="size-3" />
                         </button>
                       </li>

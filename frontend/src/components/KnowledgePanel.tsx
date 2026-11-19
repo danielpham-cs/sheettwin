@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { ProjectBadge, projectName } from "@/components/ProjectMenu";
 import { api, ApiError, formatSize, type KnowledgeDoc, type Project, type ProjectKnowledge } from "@/lib/api";
+import { useDialogFocus } from "@/lib/dialog-focus";
 import { useI18n } from "@/lib/i18n";
 
 type Props = {
@@ -30,6 +31,7 @@ export function KnowledgePanel({ open, project, knowledge, onClose, onChanged }:
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
   }, [open, onClose]);
+  const box = useDialogFocus<HTMLElement>(open && !!project);
 
   return (
     <AnimatePresence>
@@ -37,7 +39,7 @@ export function KnowledgePanel({ open, project, knowledge, onClose, onChanged }:
         <>
           <motion.div className="fixed inset-0 z-40 bg-black/30" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.aside
-            role="dialog" aria-label={s.title}
+            ref={box} role="dialog" aria-modal="true" aria-label={s.title} tabIndex={-1}
             initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", stiffness: 380, damping: 38 }}
             className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-white/10 bg-canvas shadow-2xl"
           >

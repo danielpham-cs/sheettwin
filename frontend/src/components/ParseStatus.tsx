@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, CircleDashed, CircleHelp, FileX2, Loader2,
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { api, type FixSuggestion, type FixSuggestions, type IngestResult, type ParseError, type ParseStatus, type Summary, type Workbook } from "@/lib/api";
+import { useDialogFocus } from "@/lib/dialog-focus";
 import { useI18n } from "@/lib/i18n";
 
 const STYLE: Record<ParseStatus, { icon: typeof CheckCircle2; tone: string }> = {
@@ -34,12 +35,13 @@ export function Modal({ open, onClose, children }: { open: boolean; onClose: () 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+  const box = useDialogFocus<HTMLDivElement>(open);
   return (
     <AnimatePresence>
       {open && (
         <motion.div className="fixed inset-0 z-[60] grid place-items-center bg-black/70 p-4"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-          <motion.div onClick={(e) => e.stopPropagation()} initial={{ scale: 0.96, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.97, y: 6 }}
+          <motion.div ref={box} role="dialog" aria-modal="true" tabIndex={-1} onClick={(e) => e.stopPropagation()} initial={{ scale: 0.96, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.97, y: 6 }}
             className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-white/10 bg-zinc-950 shadow-2xl">
             {children}
           </motion.div>

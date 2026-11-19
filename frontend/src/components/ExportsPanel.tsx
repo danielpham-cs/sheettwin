@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, formatSize, type DiffResult, type ExportFile, type Workbook } from "@/lib/api";
+import { useDialogFocus } from "@/lib/dialog-focus";
 import { useI18n } from "@/lib/i18n";
 
 const FORMAT_STYLE: Record<string, { icon: typeof Database; tint: string }> = {
@@ -58,6 +59,7 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
   const files = current?.files ?? null;
   const error = current?.error ?? null;
   const [preview, setPreview] = useState<{ file: ExportFile; text: string } | null>(null);
+  const previewBox = useDialogFocus<HTMLDivElement>(!!preview);
   const [loadingPreview, setLoadingPreview] = useState<string | null>(null);
 
   useEffect(() => {
@@ -100,7 +102,7 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -24, opacity: 0 }}
             transition={{ type: "spring", stiffness: 380, damping: 34 }}
-            className="absolute inset-y-0 left-[72px] z-40 flex w-[min(440px,calc(100vw-72px))] flex-col border-r border-white/10 bg-zinc-950/85 shadow-2xl shadow-black/60"
+            className="absolute inset-y-0 left-[60px] z-40 flex w-[min(440px,calc(100vw-60px))] flex-col border-r border-white/10 bg-surface shadow-2xl shadow-black/60 sm:left-[72px] sm:w-[min(440px,calc(100vw-72px))]"
           >
             <header className="flex items-start justify-between px-6 pb-4 pt-6">
               <div className="min-w-0">
@@ -139,7 +141,7 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="truncate text-sm font-medium text-zinc-100">{t.exports.labels[f.source ? "source" : f.name] ?? f.label}</span>
-                        {f.source && <span className="rounded-md bg-white/5 px-1.5 text-[10px] text-zinc-400">{t.exports.original}</span>}
+                        {f.source && <span className="rounded-md bg-white/5 px-1.5 text-[11px] text-zinc-400">{t.exports.original}</span>}
                       </span>
                       <span className="block truncate font-mono text-[11px] text-zinc-500">
                         {f.format} · {formatSize(f.size)}
@@ -191,6 +193,11 @@ export function ExportsPanel({ open, workbookId, workbookName, workbook, version
             onClick={() => setPreview(null)}
           >
             <motion.div
+              ref={previewBox}
+              role="dialog"
+              aria-modal="true"
+              aria-label={preview.file.name}
+              tabIndex={-1}
               onClick={(e) => e.stopPropagation()}
               initial={{ scale: 0.96, y: 10 }}
               animate={{ scale: 1, y: 0 }}
@@ -278,7 +285,7 @@ function SourceCard({ workbook: w, versions, onOpenCell }: { workbook: Workbook;
       <div className="flex items-center gap-2">
         <FileSpreadsheet className="size-4 shrink-0 text-emerald-300" />
         <span className="truncate text-sm font-medium text-zinc-100">{w.name}</span>
-        <span className="shrink-0 rounded-md bg-white/5 px-1.5 text-[10.5px] text-zinc-400 ring-1 ring-white/10">{s.version(w.version, w.versions)}</span>
+        <span className="shrink-0 rounded-md bg-white/5 px-1.5 text-[11px] text-zinc-400 ring-1 ring-white/10">{s.version(w.version, w.versions)}</span>
       </div>
       {w.aliases.length > 0 && <p className="mt-1 text-zinc-500">{s.alsoAs(w.aliases.join(", "))}</p>}
       <dl className="mt-3 grid grid-cols-[96px_1fr] gap-x-3 gap-y-1.5">

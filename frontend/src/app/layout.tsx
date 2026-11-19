@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "@xyflow/react/dist/style.css";
 import "./globals.css";
 import { THEME_SCRIPT } from "@/lib/theme-script";
+import { ReducedMotion } from "@/components/ReducedMotion";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,7 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
-      <body className="h-full overflow-hidden">{children}</body>
+      <body className="h-full overflow-hidden"><ReducedMotion>{children}</ReducedMotion></body>
     </html>
   );
 }

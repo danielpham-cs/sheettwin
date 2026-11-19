@@ -92,7 +92,7 @@ export function ProjectSwitcher({ projects, activeProject, onProject, onCreatePr
           className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-white/[0.06]">
           <ProjectBadge project={active} size="lg" />
           <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-medium uppercase tracking-wider text-zinc-500">{s.label}</span>
+            <span className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500">{s.label}</span>
             <span className="block truncate text-[15px] font-semibold text-white">{name}</span>
           </span>
           <ChevronsUpDown className="size-4 shrink-0 text-zinc-500" />
@@ -110,7 +110,7 @@ export function ProjectSwitcher({ projects, activeProject, onProject, onCreatePr
           className="absolute left-0 top-full z-50 mt-1 w-72 overflow-hidden rounded-lg border border-white/10 bg-zinc-900 py-1 text-sm shadow-2xl">
           {mode === "create" || mode === "rename" ? (
             <form onSubmit={(e) => { e.preventDefault(); save(); }} className="p-3">
-              <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
                 {mode === "create" ? s.create : s.renameNamed(name)}
               </label>
               <div className="mt-2 flex items-center gap-2 rounded-md border border-blue-400/50 bg-white/[0.04] px-2 py-1.5 focus-within:ring-2 focus-within:ring-blue-500/30">
@@ -137,7 +137,7 @@ export function ProjectSwitcher({ projects, activeProject, onProject, onCreatePr
               </div>
             </div>
           ) : (<>
-          <p className="px-3 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-zinc-500">{s.all}</p>
+          <p className="px-3 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">{s.all}</p>
           <ul className="max-h-72 overflow-y-auto">
             {projects.map((p) => (
               <li key={p.id}>

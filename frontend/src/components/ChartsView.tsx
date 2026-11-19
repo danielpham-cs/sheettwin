@@ -78,7 +78,7 @@ function Donut({ data, center, percent, unit, icon }: { data: Datum[]; center: s
         <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
           <div>
             <div className="text-2xl font-semibold text-white">{fmt(total, percent)}</div>
-            <div className="text-[11px] text-zinc-500">{center}</div>
+            <div className="text-xs text-zinc-500">{center}</div>
           </div>
         </div>
       </div>
@@ -218,7 +218,7 @@ function TableChart({ table }: { table: ChartData["tables"][number] }) {
           <HBar data={data} percent={field.percent} unit={field.unit} />
         )}
         {!empty && (
-          <p className="mt-3 text-[11px] text-zinc-600">
+          <p className="mt-3 text-xs text-zinc-600">
             {groupName ? t.charts.noteGroup(table.fields.find((f) => f.name === groupName)?.header ?? groupName, fieldLabel(field)) : t.charts.noteRows(fieldLabel(field))}
             {!groupName && rowsTotal > MAX_BARS ? t.charts.noteTop(MAX_BARS) : ""}
             {field.missing > 0 && field.missing < rowsTotal ? t.charts.noteMissing(field.missing) : ""}
