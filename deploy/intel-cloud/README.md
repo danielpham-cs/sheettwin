@@ -12,6 +12,12 @@ Browser ──https──► JupyterLab /6/ ──jupyter-server-proxy──► 
 Cloud with access to the reservation. The UI picks up the prefix per request (`X-Forwarded-Prefix`), so nothing needs
 rebuilding if `<jupyter-host>` or `<n>` change.
 
+**Each user has their own data.** The gateway signs people in and passes their e-mail (`Oidc_claim_email`) through the
+proxy; with `SHEETIR_USER_HEADER` set (see the compose file), every request works in `/data/users/<e-mail>/`, so
+workbooks, projects and project documents are never shared between users. `GET /api/me` says who you are. A request
+without the header (e.g. `curl` on the VM itself) uses the shared `/data/` as before. The LLM call log
+(`/data/.logs/llm.jsonl`) stays shared, on the VM only.
+
 ## Start / stop
 ```bash
 cd ~/sheettwin/deploy/intel-cloud
