@@ -8,11 +8,13 @@ Pages:
 Layout of the data directory (default ./data, override with SHEETIR_DATA):
     data/<id>/<original file name>.xlsx   copy of the upload (the user's file is never touched)
     data/<id>/ir.db                       SheetIR database
-where <id> is the first 12 hex chars of the workbook's SHA-256.
+where <id> is the first 12 hex chars of the workbook's SHA-256. With SHEETIR_USER_HEADER set (see users.py), each
+signed-in user gets the same layout under data/users/<user>/.
 """
 
 from __future__ import annotations
 
+import contextvars
 import csv
 import datetime as dt
 import gc
@@ -49,7 +51,7 @@ from ..store import IR_SCHEMA, TRACE_SQL
 from ..understand import ask
 from ..verify import NOT_UNDERSTOOD
 from ..catalog.project import ProjectCatalog
-from . import graph, knowledge, projects, provenance
+from . import graph, knowledge, projects, provenance, users
 from .basepath import BasePathMiddleware
 from .charts import charts
 from .chat import answer, find_cells
@@ -62,11 +64,13 @@ MAX_LAYOUT_CELLS = 30_000  # per sheet, for the overview minimaps
 
 app = FastAPI(title="SheetTwin · SheetIR")
 app.add_middleware(BasePathMiddleware)  # UI behind a proxy prefix (see basepath.py)
+app.add_middleware(users.UserScopeMiddleware)  # per-user data behind a sign-in gateway (see users.py)
 log = logging.getLogger("sheetir.web")
 
 
 def data_dir() -> Path:
-    d = Path(os.environ.get("SHEETIR_DATA", "data"))
+    """The data directory of this request: the signed-in user's own (users.py), or the shared one."""
+    d = users.scoped(Path(os.environ.get("SHEETIR_DATA", "data")))
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -757,6 +761,12 @@ class ChatRequest(BaseModel):
     lang: str = "zh"  # UI language (zh | en | vi), used when the question's own language cannot be told
 
 
+@app.get("/api/me")
+def me():
+    """Who the data belongs to: the signed-in user when users are separated (users.py), else null (shared data)."""
+    return {"user": users.current_user(), "separated": bool(users.header_name())}
+
+
 @app.get("/api/llm")
 def llm_status():
     """Whether chat answers come from a language model or from the built-in rules, and if not, why."""
@@ -976,7 +986,8 @@ def _sse(run) -> StreamingResponse:
         finally:
             events.put(None)
 
-    threading.Thread(target=work, daemon=True).start()
+    # A plain thread starts with an empty context: carry this request's (its user, users.py) into it.
+    threading.Thread(target=contextvars.copy_context().run, args=(work,), daemon=True).start()
 
     def stream():
         while True:

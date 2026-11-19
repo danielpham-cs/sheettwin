@@ -58,6 +58,10 @@ services:
       OPENAI_BASE_URL: http://127.0.0.1:8000/v1
       OPENAI_API_KEY: local
       SHEETIR_LLM_MODEL: sheettwin-llm
+      # Each signed-in user gets their own data: the Intel Cloud gateway passes the user's e-mail in this header
+      # (sheetir/web/users.py). Safe here because the gateway drops any copy the browser sends and the app only
+      # listens on 127.0.0.1.
+      SHEETIR_USER_HEADER: Oidc_claim_email
     depends_on:
       llm:
         condition: service_healthy
