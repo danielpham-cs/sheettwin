@@ -39,6 +39,7 @@ from ..loader import WorkbookError
 from ..report import audit_report, to_html, to_markdown
 from ..sample import make_quotation
 from ..store import IR_SCHEMA, TRACE_SQL
+from ..twin import check as check_twin, export_module, stored as stored_twin
 from ..understand import ask
 from ..verify import NOT_UNDERSTOOD
 from . import graph, provenance
@@ -633,6 +634,31 @@ def chart_data(wid: str):
     return charts(_connect(wid))
 
 
+class TwinRequest(BaseModel):
+    scenarios: int = 10
+    seed: int = 0
+    v2: bool = True
+
+
+@app.get("/api/workbooks/{wid}/twin")
+def get_twin(wid: str):
+    """The Python twin's last check (translation coverage, V1 vs Excel, V2 vs pycel, per-group results), or
+    {"status": "not_run"} if it was never checked."""
+    return stored_twin(_db_path(wid)) or {"status": "not_run"}
+
+
+@app.post("/api/workbooks/{wid}/twin")
+def run_twin(wid: str, req: TwinRequest | None = None):
+    """Translate the workbook's formulas to Python and verify them; the result is kept in ir.db, and the twin as
+    twin.py next to it (downloadable from the exports)."""
+    req = req or TwinRequest()
+    db = _db_path(wid)
+    src = provenance.source_file(db.parent)
+    check_twin(db, src, v2=req.v2, scenarios=max(0, min(req.scenarios, 100)), seed=req.seed)
+    (db.parent / "twin.py").write_text(export_module(db), encoding="utf-8")
+    return stored_twin(db)
+
+
 # Files derived from the workbook. CSV/JSON exports are generated on request from ir.db.
 EXPORTS = {
     "ir.db": ("SheetIR 資料庫", "SQLite", "application/vnd.sqlite3"),
@@ -675,6 +701,10 @@ def list_exports(wid: str, lang: str = "zh"):
     for name, (label, fmt, _) in EXPORTS.items():
         size = db.stat().st_size if name == "ir.db" else len(_export_bytes(wid, name, lang))
         out.append({"name": name, "label": label, "format": fmt, "size": size, "source": False})
+    twin = db.parent / "twin.py"
+    if twin.exists() and twin.stat().st_mtime >= db.stat().st_mtime - 1:  # written by the last twin check
+        out.append({"name": "twin.py", "label": "Python 分身", "format": "Python", "size": twin.stat().st_size,
+                    "source": False})
     return out
 
 
@@ -686,6 +716,11 @@ def download_export(wid: str, name: str, lang: str = "zh", inline: bool = False)
     stem = Path(dict(_connect(wid).execute("SELECT key, value FROM meta").fetchall())["source"]).stem
     if name == "ir.db":
         return FileResponse(db, media_type=EXPORTS[name][2], filename=f"{stem}.{wid}.sheetir.db")
+    if name == "twin.py":
+        if not (db.parent / "twin.py").exists():
+            raise HTTPException(404, "the twin has not been built yet: POST /api/workbooks/{id}/twin")
+        return FileResponse(db.parent / "twin.py", media_type="text/x-python; charset=utf-8",
+                            filename=f"{stem}.{wid}.twin.py")
     if name in EXPORTS:
         filename = f"{stem}.{wid}.{name}"
         if name in REPORTS and lang == "en":

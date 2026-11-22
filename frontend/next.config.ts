@@ -19,6 +19,8 @@ export default function config(phase: string): NextConfig {
     return {
       turbopack,
       rewrites: () => [{ source: "/api/:path*", destination: `${API}/api/:path*` }],
+      // The proxy gives up after 30 s by default and answers 500; LLM chat replies can take longer.
+      experimental: { proxyTimeout: 300_000 },
     };
   }
   // `next build`: plain static files in out/ (landing page at /, the app at /app/), copied into sheetir/web/static/app
