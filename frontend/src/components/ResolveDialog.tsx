@@ -90,11 +90,11 @@ function Body({ workbookId, target, onClose, onEdited, onIgnored }: Props & { wo
   return (
     <>
       <header className="flex items-start gap-3 border-b border-white/5 px-6 py-4">
-        <Wand2 className="mt-0.5 size-5 shrink-0 text-violet-300" />
+        <Wand2 className="mt-0.5 size-5 shrink-0 text-blue-300" />
         <div className="min-w-0 flex-1">
           <h3 className="flex flex-wrap items-center gap-2 font-medium">
             {target.kind.replace(/_/g, " ")}
-            <span className="font-mono text-sm text-violet-300">{target.cell}</span>
+            <span className="font-mono text-sm text-blue-300">{target.cell}</span>
             {issue && <span className={`rounded-full px-2 py-0.5 text-[11px] ring-1 ${SEV[issue.severity]}`}>{t.issues.severity[issue.severity]}</span>}
           </h3>
         </div>
@@ -117,7 +117,7 @@ function Body({ workbookId, target, onClose, onEdited, onIgnored }: Props & { wo
               <p className="text-zinc-200">{rec ? <RecText rec={rec} /> : (t.fixes.advice[issue.kind] ?? r.manual)}</p>
               {!rec && t.fixes.advice[issue.kind] && <p className="mt-1 text-xs text-zinc-500">{r.manual}</p>}
 
-              <div className="mt-3 max-h-72 overflow-y-auto rounded-xl border border-white/5">
+              <div className="mt-3 max-h-72 overflow-y-auto rounded-md border border-white/5">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-zinc-950 text-left text-zinc-500">
                     <tr><th className="px-3 py-1.5 font-normal">{r.cell}</th><th className="px-3 py-1.5 font-normal">{r.now}</th><th className="px-3 py-1.5 font-normal">{r.change}</th></tr>
@@ -125,12 +125,12 @@ function Body({ workbookId, target, onClose, onEdited, onIgnored }: Props & { wo
                   <tbody>
                     {Object.keys(values).map((c) => (
                       <tr key={c} className="border-t border-white/5 align-top">
-                        <td className="whitespace-nowrap px-3 py-1.5 font-mono text-violet-300">{c}</td>
+                        <td className="whitespace-nowrap px-3 py-1.5 font-mono text-blue-300">{c}</td>
                         <td className="break-all px-3 py-1.5 font-mono text-zinc-500">{issue.current[c] || <span className="font-sans italic">{r.emptyCell}</span>}</td>
                         <td className="w-1/2 px-2 py-1">
                           <input value={values[c]} onChange={(e) => setValues((v) => ({ ...v, [c]: e.target.value }))} spellCheck={false}
                             disabled={!!busy} placeholder={r.emptyCell}
-                            className={`w-full rounded-md bg-white/[0.04] px-2 py-1 font-mono text-xs outline-none ring-1 focus:ring-violet-400/60 ${values[c] !== (issue.current[c] ?? "") ? "text-emerald-300 ring-emerald-400/30" : "text-zinc-200 ring-white/10"}`} />
+                            className={`w-full rounded-md bg-white/[0.04] px-2 py-1 font-mono text-xs outline-none ring-1 focus:ring-blue-400/60 ${values[c] !== (issue.current[c] ?? "") ? "text-emerald-300 ring-emerald-400/30" : "text-zinc-200 ring-white/10"}`} />
                           {issue.blocked?.[c] && <p className="mt-1 text-amber-200/80">{t.fixes.blocked[issue.blocked[c]]}</p>}
                         </td>
                       </tr>
@@ -142,7 +142,7 @@ function Body({ workbookId, target, onClose, onEdited, onIgnored }: Props & { wo
                 <label className="mt-2 block text-xs text-zinc-400">
                   {r.label(labelCell)}
                   <input value={label} onChange={(e) => setLabel(e.target.value)} disabled={!!busy}
-                    className="mt-1 w-full rounded-md bg-white/[0.04] px-2 py-1 text-xs text-zinc-200 outline-none ring-1 ring-white/10 focus:ring-violet-400/60" />
+                    className="mt-1 w-full rounded-md bg-white/[0.04] px-2 py-1 text-xs text-zinc-200 outline-none ring-1 ring-white/10 focus:ring-blue-400/60" />
                 </label>
               )}
               <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
@@ -157,10 +157,10 @@ function Body({ workbookId, target, onClose, onEdited, onIgnored }: Props & { wo
             </section>
 
             {ignoring && (
-              <section className="rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/10">
+              <section className="rounded-md bg-white/[0.03] p-3 ring-1 ring-white/10">
                 <p className="text-xs text-zinc-400">{r.ignoreHint}</p>
                 <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={r.notePlaceholder} disabled={!!busy}
-                  className="mt-2 w-full resize-none rounded-md bg-white/[0.04] px-2 py-1.5 text-xs text-zinc-200 outline-none ring-1 ring-white/10 focus:ring-violet-400/60" />
+                  className="mt-2 w-full resize-none rounded-md bg-white/[0.04] px-2 py-1.5 text-xs text-zinc-200 outline-none ring-1 ring-white/10 focus:ring-blue-400/60" />
                 <div className="mt-2 flex justify-end gap-2">
                   <button onClick={() => setIgnoring(false)} disabled={!!busy} className="rounded-lg px-3 py-1 text-xs text-zinc-400 hover:bg-white/5">✕</button>
                   <button onClick={ignore} disabled={!!busy} className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1 text-xs text-white ring-1 ring-white/15 hover:bg-white/15">
@@ -171,7 +171,7 @@ function Body({ workbookId, target, onClose, onEdited, onIgnored }: Props & { wo
             )}
           </>
         )}
-        {error && <p className="rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</p>}
+        {error && <p className="rounded-md bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</p>}
       </div>
 
       {issue && (
@@ -185,7 +185,7 @@ function Body({ workbookId, target, onClose, onEdited, onIgnored }: Props & { wo
             : <span className="text-xs text-zinc-500">{r.cannotIgnore}</span>}
           <button onClick={apply} disabled={!!busy || !canApply || changed.length === 0 || blockedChanged.length > 0}
             title={changed.length === 0 ? r.nothing : undefined}
-            className="ml-auto flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-400 px-3 py-1.5 text-xs font-medium text-white shadow-lg shadow-violet-500/20 disabled:opacity-50">
+            className="ml-auto flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-snow shadow-lg disabled:opacity-50">
             {busy === "apply" ? <Loader2 className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}
             {busy === "apply" ? r.applying : changed.length ? r.apply(Object.keys(edits).length) : r.nothing}
           </button>

@@ -109,7 +109,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
   useEffect(() => {
     if (!sd || !gridRef.current) return;
     const target = selected
-      ? gridRef.current.querySelector(`[data-id="${CSS.escape(selected)}"]`)
+      ? gridRef.current.querySelector(`[data-id="${CSS.escape(selected)}"]`) ?? gridRef.current.querySelector("[data-sel]")
       : focusTable != null ? gridRef.current.querySelector(`[data-t0="${focusTable}"]`) : null;
     target?.scrollIntoView({ block: "center", inline: "nearest" });
   }, [sd, selected, focusTable]);
@@ -121,7 +121,9 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
     const drafts = draft.map((d, i) => specToInfo(d, declared.length + i + 1, sheet)).filter((x): x is TableInfo => !!x);
     return [...declared, ...drafts];
   }, [sd, draft, sheet]);
-  const grid = useMemo(() => (sd && shownTables ? buildGrid(sd, shownTables) : null), [sd, shownTables]);
+  // Large sheets are drawn in a window of MAX_ROWS × MAX_COLS; it moves so a cell opened from elsewhere is in it.
+  const anchor = useMemo(() => (selected && sheet && sheetOf(selected) === sheet ? posOf(selected) : null), [selected, sheet]);
+  const grid = useMemo(() => (sd && shownTables ? buildGrid(sd, shownTables, anchor) : null), [sd, shownTables, anchor]);
 
   if (!workbookId || !summary) {
     return <div className="grid flex-1 place-items-center text-sm text-zinc-500">{t.sheets.empty}</div>;
@@ -170,7 +172,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
     <div className="flex min-h-0 flex-1 gap-4 p-4 md:p-6">
       <section className="flex min-w-0 flex-1 flex-col">
         {summary.stale && (
-          <div className="mb-3 flex items-center gap-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-100">
+          <div className="mb-3 flex items-center gap-3 rounded-md border border-amber-400/20 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-100">
             <AlertTriangle className="size-4 shrink-0" />
             <span className="flex-1">{t.sheets.stale}</span>
             <button onClick={reparse} disabled={reparsing}
@@ -185,20 +187,20 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
           <div className="flex flex-wrap gap-1">
             {sheets.map((s) => (
               <button key={s} onClick={() => { setSheet(s); setSelected(null); setFocusTable(null); stopEditing(); }}
-                className={`rounded-lg px-3 py-1 text-sm transition ${s === sheet ? "bg-violet-500/25 text-white ring-1 ring-violet-400/40" : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"}`}>
+                className={`rounded-lg px-3 py-1 text-sm transition ${s === sheet ? "bg-blue-500/25 text-white ring-1 ring-blue-400/40" : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"}`}>
                 {s}
               </button>
             ))}
           </div>
           <button onClick={editing ? stopEditing : startEditing} disabled={!sd} title={t.sheets.edit.startHint}
-            className={`ml-auto flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs ring-1 transition ${editing ? "bg-violet-500/25 text-white ring-violet-400/40" : "text-zinc-300 ring-white/10 hover:bg-white/5"}`}>
+            className={`ml-auto flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs ring-1 transition ${editing ? "bg-blue-500/25 text-white ring-blue-400/40" : "text-zinc-300 ring-white/10 hover:bg-white/5"}`}>
             <PencilRuler className="size-3.5" />{t.sheets.edit.start}
           </button>
           <label className="flex items-center gap-1.5 text-xs text-zinc-400">
-            <input type="checkbox" checked={showFormulas} onChange={(e) => setShowFormulas(e.target.checked)} className="accent-violet-500" />
+            <input type="checkbox" checked={showFormulas} onChange={(e) => setShowFormulas(e.target.checked)} className="accent-blue-500" />
             {t.sheets.formulas}
           </label>
-          <div className="flex rounded-xl border border-white/10 bg-white/[0.03] p-0.5">
+          <div className="flex rounded-md border border-white/10 bg-white/[0.03] p-0.5">
             {(["structure", "roles"] as const).map((m) => (
               <button key={m} onClick={() => setMode(m)} title={m === "structure" ? t.sheets.structureHint : t.sheets.rolesHint}
                 className={`rounded-lg px-3 py-1 text-xs transition ${mode === m ? "bg-white/10 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>
@@ -219,7 +221,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
                   <span className="size-2 rounded-full" style={{ background: tableColor(tb) }} />
                   {tb.name}
                   <span className="text-zinc-500">{rangeA1(tb)} · {t.sheets.rows(tb.row_end - tb.row_start + 1)}</span>
-                  {tb.source === "user" && <span className="rounded bg-violet-500/20 px-1 text-[10px] text-violet-200">{t.sheets.edit.edited}</span>}
+                  {tb.source === "user" && <span className="rounded bg-blue-500/20 px-1 text-[11px] text-blue-200">{t.sheets.edit.edited}</span>}
                 </button>
               ))}
             </>
@@ -228,7 +230,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
 
         <Legend mode={mode} />
 
-        <div ref={gridRef} className={`sgrid min-h-0 flex-1 overflow-auto rounded-2xl border bg-[#141419]/90 ${editing ? "editing border-violet-400/40" : "border-white/[0.07]"}`}>
+        <div ref={gridRef} className={`sgrid min-h-0 flex-1 overflow-auto rounded-lg border bg-surface/90 ${editing ? "editing border-blue-400/40" : "border-white/[0.07]"}`}>
           {error && <p className="p-4 text-sm text-rose-300">{error}</p>}
           {!sd && !error && <div className="grid h-40 place-items-center"><Loader2 className="size-5 animate-spin text-zinc-500" /></div>}
           {sd && grid && (
@@ -237,17 +239,17 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
                 <thead>
                   <tr>
                     <th />
-                    {Array.from({ length: grid.maxC }, (_, i) => <th key={i}>{colName(i + 1)}</th>)}
+                    {Array.from({ length: grid.nC }, (_, i) => <th key={i}>{colName(grid.c0 + i)}</th>)}
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.from({ length: grid.maxR }, (_, ri) => {
-                    const r = ri + 1;
+                  {Array.from({ length: grid.nR }, (_, ri) => {
+                    const r = grid.r0 + ri;
                     return (
                       <tr key={r}>
                         <th className="rh">{r}</th>
-                        {Array.from({ length: grid.maxC }, (_, ci) => {
-                          const c = ci + 1;
+                        {Array.from({ length: grid.nC }, (_, ci) => {
+                          const c = grid.c0 + ci;
                           const cell = grid.byPos.get(`${r}:${c}`);
                           const slot = grid.tables.get(`${r}:${c}`);
                           return (
@@ -256,7 +258,7 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
                               onDown={dragStart} onOver={dragOver}
                               severity={cell ? grid.issues.get(cell.cell_id) : undefined}
                               param={cell ? grid.params.get(cell.cell_id) : undefined}
-                              selected={!!cell && cell.cell_id === selected}
+                              selected={cell ? cell.cell_id === selected : !!anchor && anchor.row === r && anchor.col === c}
                               precedent={!!cell && direct.has(cell.cell_id)}
                               inGroup={!!cell && group != null && cell.group_id === group}
                               focused={!!slot && slot.t.table_id === focusTable}
@@ -268,13 +270,13 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
                   })}
                 </tbody>
               </table>
-              {grid.capped && <p className="px-3 py-2 text-xs text-zinc-500">{t.sheets.capped(MAX_ROWS, MAX_COLS)}</p>}
+              {grid.capped && <p className="px-3 py-2 text-xs text-zinc-500">{t.sheets.capped(`${colName(grid.c0)}${grid.r0}:${colName(grid.c0 + grid.nC - 1)}${grid.r0 + grid.nR - 1}`)}</p>}
             </>
           )}
         </div>
       </section>
 
-      <aside className="hidden w-[380px] shrink-0 overflow-y-auto rounded-2xl border border-white/[0.07] bg-[#141419]/90 p-5 text-sm lg:block">
+      <aside className="hidden w-[380px] shrink-0 overflow-y-auto rounded-lg border border-white/[0.07] bg-surface/90 p-5 text-sm lg:block">
         {editing && sd && draft ? (
           <TableEditor sheet={sheet!} draft={draft} declared={sd.tables.filter((x) => x.source === "listobject")} selection={sel}
             edited={edited} saving={saving} error={editError}
@@ -292,7 +294,21 @@ export function StructureView({ workbookId, summary, focusCell, onTraceGraph, on
   );
 }
 
-function buildGrid(sd: SheetData, shownTables: TableInfo[]) {
+/** Row and column of a cell id such as `'My Sheet'!AB12`. */
+function posOf(cellId: string): { row: number; col: number } | null {
+  const m = /^([A-Za-z]+)(\d+)$/.exec(cellId.slice(cellId.lastIndexOf("!") + 1).replace(/\$/g, ""));
+  if (!m) return null;
+  const col = [...m[1].toUpperCase()].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+  return { row: +m[2], col };
+}
+
+/** First index of a window of `size` over 1..extent that contains `at` (centred on it when it has to move). */
+function windowStart(extent: number, size: number, at?: number) {
+  if (!at || at <= size || extent <= size) return 1;
+  return Math.max(1, Math.min(at - Math.floor(size / 2), extent - size + 1));
+}
+
+function buildGrid(sd: SheetData, shownTables: TableInfo[], anchor: { row: number; col: number } | null) {
   const byPos = new Map(sd.cells.map((c) => [`${c.row}:${c.col}`, c]));
   const issues = new Map<string, "high" | "medium" | "low">();
   for (const i of sd.issues) if (!issues.has(i.cell_id) || i.severity === "high") issues.set(i.cell_id, i.severity);
@@ -305,11 +321,16 @@ function buildGrid(sd: SheetData, shownTables: TableInfo[]) {
       tables.set(`${r}:${c}`, { t: tb, part, top: r === top, bottom: r === bottom, left: c === tb.col_start, right: c === tb.col_end });
     }
   }
-  const extentR = Math.max(1, ...sd.cells.map((c) => c.row), ...shownTables.map(tableBottom));
-  const extentC = Math.max(1, ...sd.cells.map((c) => c.col), ...shownTables.map((x) => x.col_end));
+  // A loop, not Math.max(...spread): a big sheet has more cells than a call can take as arguments.
+  let extentR = 1, extentC = 1;
+  for (const c of sd.cells) { if (c.row > extentR) extentR = c.row; if (c.col > extentC) extentC = c.col; }
+  for (const x of shownTables) { extentR = Math.max(extentR, tableBottom(x)); extentC = Math.max(extentC, x.col_end); }
+  // An opened cell may be empty and past the last stored one; still draw it.
+  if (anchor) { extentR = Math.max(extentR, anchor.row); extentC = Math.max(extentC, anchor.col); }
+  const r0 = windowStart(extentR, MAX_ROWS, anchor?.row), c0 = windowStart(extentC, MAX_COLS, anchor?.col);
   return {
-    byPos, issues, params, tables,
-    maxR: Math.min(extentR, MAX_ROWS), maxC: Math.min(extentC, MAX_COLS),
+    byPos, issues, params, tables, r0, c0,
+    nR: Math.min(extentR - r0 + 1, MAX_ROWS), nC: Math.min(extentC - c0 + 1, MAX_COLS),
     capped: extentR > MAX_ROWS || extentC > MAX_COLS,
   };
 }
@@ -352,7 +373,7 @@ function GridCell({ r, c, editing, inSel, onDown, onOver, cell, slot, mode, show
   const mouse = editing
     ? { onMouseDown: (e: React.MouseEvent) => { e.preventDefault(); onDown(r, c); }, onMouseEnter: () => onOver(r, c) }
     : {};
-  if (!cell) return <td className={cls.join(" ")} style={style} {...mouse} />;
+  if (!cell) return <td className={cls.join(" ")} style={style} data-sel={selected || undefined} {...mouse} />;
 
   const formulaShown = cell.vtype === "formula" && (showFormulas || cell.cached === null || cell.cached === undefined);
   if (formulaShown) cls.push("f");
@@ -388,7 +409,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function CellLink({ id, onCell, children }: { id: string; onCell: (id: string) => void; children?: React.ReactNode }) {
-  return <button onClick={() => onCell(id)} className="font-mono text-[12.5px] text-violet-300 hover:text-violet-200 hover:underline">{children ?? id}</button>;
+  return <button onClick={() => onCell(id)} className="font-mono text-[12.5px] text-blue-300 hover:text-blue-200 hover:underline">{children ?? id}</button>;
 }
 
 function whereText(t: ReturnType<typeof useI18n>["t"], c: SheetCell, sd: SheetData) {
@@ -419,9 +440,9 @@ function CellInspector({ detail, sheet, onCell, onTraceGraph, onAsk, onResolve }
         <h3 className="font-mono text-base font-semibold text-white">{c.cell_id}</h3>
         <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-zinc-400 ring-1 ring-white/10">{roleLabel}</span>
       </div>
-      <p className="mt-1 break-all font-mono text-[12.5px] text-violet-300">{c.semantic || "—"}</p>
+      <p className="mt-1 break-all font-mono text-[12.5px] text-blue-300">{c.semantic || "—"}</p>
       {c.vtype && (
-        <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-200">
+        <p className="mt-3 rounded-md bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-200">
           {tb && <span className="mr-1.5 inline-block size-2 rounded-full align-middle" style={{ background: tableColor(tb) }} />}
           {whereText(t, c, sheet)}
         </p>
@@ -518,8 +539,8 @@ function TableInspector({ table, sheet, onCell }: { table: TableInfo; sheet: str
         <Table2 className="size-4" style={{ color: tableColor(table) }} />
         <h3 className="text-base font-semibold text-white">{table.name}</h3>
       </div>
-      <p className="mt-1 font-mono text-[12.5px] text-violet-300">{sheet}!{rangeA1(table)}</p>
-      <p className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-200">
+      <p className="mt-1 font-mono text-[12.5px] text-blue-300">{sheet}!{rangeA1(table)}</p>
+      <p className="mt-3 rounded-md bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-200">
         {table.source === "listobject" ? s.listobject : table.source === "user" ? s.user : s.detected(table.confidence)}
         {table.kind === "parameter_list" ? ` ${s.paramList}` : ""}
       </p>

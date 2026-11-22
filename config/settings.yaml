@@ -1,0 +1,60 @@
+# SheetTwin settings (docs/excel-agent-system-design.md §10). Every key is optional: a missing key takes the default in
+# sheetir/config.py. Point SHEETIR_CONFIG at another file to use it instead of this one.
+#
+# Environment variables (or a git-ignored .env file) override the LLM block, so Docker and existing setups keep working:
+#   OPENAI_BASE_URL -> llm.base_url    SHEETIR_LLM_MODEL -> llm.model    OPENAI_API_KEY -> llm.api_key
+#   SHEETIR_ALLOW_REMOTE_LLM=1 -> llm.allow_remote
+# Setting OPENAI_BASE_URL or OPENAI_API_KEY also turns the model on.
+
+offline: true                    # no telemetry, no model downloads (HF_HUB_OFFLINE, TRANSFORMERS_OFFLINE)
+
+llm:
+  enabled: false                 # off: the chat answers with the built-in rules
+  base_url: "http://127.0.0.1:8000/v1"
+  model: "qwen3.5-35b-a3b-int4"
+  allow_remote: false            # true allows an endpoint outside this machine and the local network (data leaves it)
+  max_concurrency: 8
+  timeout_s: 120
+  retries: 2                     # resends after a malformed or schema-violating reply, and after transient HTTP errors
+  structured_output: true        # response_format json_schema; switched off by itself if the backend rejects it
+  thinking_param: auto           # how to turn thinking on/off: auto | chat_template_kwargs | think | none
+  log: true                      # every call to <paths.log_dir>/llm.jsonl (prompt, output, latency, tokens)
+
+embedding:
+  model_path: "models/embedding"
+  hybrid_alpha: 0.6
+
+ingest:
+  max_file_mb: 50
+  max_sheets: 300
+  large_file_cells: 2000000
+  recalc_threshold: 50
+  libreoffice_bin: "soffice"
+
+detect:
+  accept_threshold: 0.8
+  gap_rows: 1
+  gap_cols: 1
+  llm_retries: 2
+  max_tokens_per_block: 6000
+
+clean:
+  ffill_vertical_merges: true
+
+relations:
+  family_jaccard: 0.9
+  accept_score: 0.8
+  llm_confirm_low: 0.5
+  sample_distinct: 5000
+
+agent:
+  max_steps: 8
+  thinking: false
+  sql_timeout_s: 10
+  max_rows_to_llm: 30
+  max_rows_return: 200
+  search_k: 8
+
+paths:
+  cache_dir: ".cache"
+  log_dir: ".logs"

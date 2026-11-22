@@ -10,17 +10,21 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { api, type GraphData, type GraphNode, type NodeKind } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useTheme } from "@/lib/theme";
 
 const NODE_W = 210;
 const NODE_H = 62;
 
 const KIND: Record<NodeKind, { color: string; ring: string; dot: string }> = {
-  param: { color: "#a78bfa", ring: "ring-violet-400/40", dot: "bg-violet-400" },
-  input: { color: "#22d3ee", ring: "ring-cyan-400/40", dot: "bg-cyan-400" },
-  formula: { color: "#818cf8", ring: "ring-indigo-400/30", dot: "bg-indigo-400" },
-  output: { color: "#34d399", ring: "ring-emerald-400/40", dot: "bg-emerald-400" },
+  param: { color: "var(--color-violet-400)", ring: "ring-violet-400/40", dot: "bg-violet-400" },
+  input: { color: "var(--color-cyan-400)", ring: "ring-cyan-400/40", dot: "bg-cyan-400" },
+  formula: { color: "var(--color-indigo-400)", ring: "ring-indigo-400/30", dot: "bg-indigo-400" },
+  output: { color: "var(--color-emerald-400)", ring: "ring-emerald-400/40", dot: "bg-emerald-400" },
 };
+// KIND colors are CSS variables (globals.css darkens them in light mode); severity and edge colors go into hex
+// alpha suffixes and SVG markers, so they are picked per theme here.
 const SEV_COLOR = { high: "#fb7185", medium: "#fbbf24", low: "#a1a1aa" };
+const SEV_TEXT_LIGHT = { high: "#be123c", medium: "#b45309", low: "#52525b" };
 
 type BlockData = GraphNode & { dim: boolean; selected: boolean };
 type BlockNode = Node<BlockData, "block">;
@@ -32,21 +36,21 @@ function BlockNodeView({ data }: NodeProps<BlockNode>) {
     <div
       title={data.label}
       style={{ width: NODE_W, height: NODE_H, opacity: data.dim ? 0.18 : 1 }}
-      className={`relative flex flex-col justify-center rounded-2xl border bg-zinc-900/90 px-3.5 py-2 shadow-xl backdrop-blur transition-all duration-200
+      className={`relative flex flex-col justify-center rounded-lg border bg-zinc-900/90 px-3.5 py-2 shadow-xl transition-all duration-200
         ${data.selected ? "border-white/40 ring-2 " + k.ring : "border-white/10"}
-        ${data.focus ? "shadow-[0_0_40px_-4px] shadow-violet-500/60 ring-2 ring-violet-400/70" : ""}`}
+        ${data.focus ? "shadow-[0_0_40px_-4px] ring-2 ring-blue-400/70" : ""}`}
     >
       <span className="absolute inset-y-2 left-0 w-1 rounded-r-full" style={{ background: k.color }} />
       <Handle type="target" position={Position.Left} className="!size-2 !border-0 !bg-white/30" />
       <div className="flex items-center gap-2">
-        <span className="shrink-0 whitespace-nowrap text-[10px] font-medium uppercase tracking-wider" style={{ color: k.color }}>{t.graph.kinds[data.kind]}</span>
-        {data.cells > 1 && <span className="shrink-0 rounded bg-white/5 px-1 font-mono text-[10px] text-zinc-400">×{data.cells}</span>}
-        <span className="ml-auto truncate font-mono text-[10px] text-zinc-500">{data.range}</span>
+        <span className="shrink-0 whitespace-nowrap text-xs font-medium uppercase tracking-wide" style={{ color: k.color }}>{t.graph.kinds[data.kind]}</span>
+        {data.cells > 1 && <span className="shrink-0 rounded bg-white/5 px-1 font-mono text-xs text-zinc-400">×{data.cells}</span>}
+        <span className="ml-auto truncate font-mono text-xs text-zinc-500">{data.range}</span>
       </div>
       <div className="mt-0.5 truncate font-mono text-[12.5px] text-zinc-100">{data.label}</div>
       {data.issues && (
         <span
-          className="absolute -right-2 -top-2 flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-zinc-950 shadow-lg"
+          className="absolute -right-2 -top-2 flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold text-night shadow-lg"
           style={{ background: SEV_COLOR[data.issues.severity] }}
         >
           <AlertTriangle className="size-2.5" />
@@ -102,6 +106,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
   const [selected, setSelected] = useState<{ key: string; id: string } | null>(null);
   const [draft, setDraft] = useState("");
   const { t } = useI18n();
+  const [theme] = useTheme();
 
   useEffect(() => {
     if (!workbookId) return;
@@ -128,7 +133,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
   const maxW = Math.max(1, ...(data?.edges.map((e) => e.weight) ?? [1]));
   const edges: Edge[] = useMemo(() => (data?.edges ?? []).map((e) => {
     const on = !!lit && lit.has(e.source) && lit.has(e.target);
-    const color = on ? "#c4b5fd" : "rgba(255,255,255,0.22)";
+    const color = theme === "light" ? (on ? "#2563eb" : "rgba(0,0,0,0.25)") : (on ? "#60a5fa" : "rgba(255,255,255,0.22)");
     return {
       id: `${e.source}->${e.target}`,
       source: e.source,
@@ -137,7 +142,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
       style: { stroke: color, strokeWidth: 1.2 + 2.2 * Math.log1p(e.weight) / Math.log1p(maxW), opacity: lit && !on ? 0.12 : 1 },
       markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
     };
-  }), [data, lit, maxW]);
+  }), [data, lit, maxW, theme]);
 
   const issueCount = data?.nodes.reduce((s, n) => s + (n.issues ? 1 : 0), 0) ?? 0;
 
@@ -146,7 +151,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
       <div className="relative min-w-0 flex-1">
         {/* Toolbar */}
         <div className="absolute left-4 right-4 top-4 z-10 flex flex-wrap items-center gap-3">
-          <div className="flex rounded-2xl border border-white/10 bg-zinc-900/80 p-1 backdrop-blur-xl">
+          <div className="flex rounded-lg border border-white/10 bg-zinc-900/80 p-1">
             {[
               { on: !focusCell, label: t.graph.overview, icon: Network, click: () => onFocusChange(null) },
               { on: !!focusCell, label: t.graph.trace, icon: Crosshair, click: () => onFocusChange(focusCell ?? selectedNode?.anchor ?? data?.nodes[0]?.anchor ?? null) },
@@ -154,7 +159,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
               <button
                 key={label}
                 onClick={click}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm transition ${on ? "bg-white/10 text-white" : "text-zinc-400 hover:text-white"}`}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition ${on ? "bg-white/10 text-white" : "text-zinc-400 hover:text-white"}`}
               >
                 <Icon className="size-4" />{label}
               </button>
@@ -162,7 +167,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
           </div>
           <form
             onSubmit={(e) => { e.preventDefault(); if (draft.trim()) { onFocusChange(draft.trim()); setDraft(""); } }}
-            className="glow-border flex items-center gap-2 rounded-2xl bg-zinc-900/80 px-3 py-2 text-sm backdrop-blur-xl"
+            className="field flex items-center gap-2 rounded-lg bg-zinc-900/80 px-3 py-2 text-sm"
           >
             <Search className="size-4 text-zinc-500" />
             <input
@@ -183,7 +188,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
         </div>
 
         {/* Legend */}
-        <div className="absolute bottom-4 left-4 z-10 flex flex-wrap gap-3 rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-2 text-xs text-zinc-400 backdrop-blur-xl">
+        <div className="absolute bottom-4 left-4 z-10 flex flex-wrap gap-3 rounded-lg border border-white/10 bg-zinc-900/80 px-4 py-2 text-xs text-zinc-400">
           {(Object.keys(KIND) as NodeKind[]).map((kind) => (
             <span key={kind} className="flex items-center gap-1.5"><span className={`size-2 rounded-full ${KIND[kind].dot}`} />{t.graph.kinds[kind]}</span>
           ))}
@@ -196,14 +201,14 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
         ) : current?.error ? (
           <div className="grid h-full place-items-center px-6 text-center text-sm text-rose-200">{current.error}</div>
         ) : !data ? (
-          <div className="grid h-full place-items-center"><Loader2 className="size-8 animate-spin text-violet-300" /></div>
+          <div className="grid h-full place-items-center"><Loader2 className="size-8 animate-spin text-blue-300" /></div>
         ) : (
           <ReactFlow
             key={key}
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
-            colorMode="dark"
+            colorMode={theme}
             fitView
             fitViewOptions={{ padding: 0.08 }}
             minZoom={0.15}
@@ -215,7 +220,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
             onPaneClick={() => setSelected(null)}
             style={{ background: "transparent" }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="rgba(255,255,255,0.07)" />
+            <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={theme === "light" ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.07)"} />
             <Controls showInteractive={false} position="bottom-right" />
           </ReactFlow>
         )}
@@ -229,10 +234,10 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 24, opacity: 0 }}
             transition={{ type: "spring", stiffness: 380, damping: 34 }}
-            className="w-80 shrink-0 overflow-y-auto border-l border-white/10 bg-zinc-950/80 p-5 backdrop-blur-2xl"
+            className="w-80 shrink-0 overflow-y-auto border-l border-white/10 bg-zinc-950/80 p-5"
           >
             <div className="flex items-start justify-between gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: KIND[selectedNode.kind].color }}>
+              <span className="text-xs font-medium uppercase tracking-wider" style={{ color: KIND[selectedNode.kind].color }}>
                 {t.graph.kinds[selectedNode.kind]}{selectedNode.cells > 1 ? t.graph.cells(selectedNode.cells) : ""}
               </span>
               <button onClick={() => setSelected(null)} className="rounded-lg p-1 text-zinc-500 hover:bg-white/5 hover:text-white">
@@ -255,7 +260,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
                 <Field label={t.graph.issues}>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedNode.issues.kinds.map((k) => (
-                      <span key={k} className="rounded-md px-1.5 py-0.5 font-mono text-[11px]" style={{ background: `${SEV_COLOR[selectedNode.issues!.severity]}22`, color: SEV_COLOR[selectedNode.issues!.severity] }}>{k}</span>
+                      <span key={k} className="rounded-md px-1.5 py-0.5 font-mono text-xs" style={{ background: `${SEV_COLOR[selectedNode.issues!.severity]}22`, color: (theme === "light" ? SEV_TEXT_LIGHT : SEV_COLOR)[selectedNode.issues!.severity] }}>{k}</span>
                     ))}
                   </div>
                 </Field>
@@ -266,14 +271,14 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
               {!selectedNode.focus && (
                 <button
                   onClick={() => onFocusChange(selectedNode.anchor)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-cyan-400 py-2 text-sm font-medium text-white shadow-lg shadow-violet-500/25 transition hover:brightness-110"
+                  className="flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 py-2 text-sm font-medium text-snow shadow-lg transition hover:brightness-110"
                 >
                   <Crosshair className="size-4" />{t.graph.traceThis(selectedNode.anchor)}
                 </button>
               )}
               <button
                 onClick={() => onAsk(selectedNode.anchor)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] py-2 text-sm text-zinc-200 transition hover:bg-white/[0.07]"
+                className="flex w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.03] py-2 text-sm text-zinc-200 transition hover:bg-white/[0.07]"
               >
                 <MessageSquareText className="size-4" />{t.graph.ask}
               </button>
@@ -288,7 +293,7 @@ export function GraphView({ workbookId, focusCell, onFocusChange, onAsk }: Props
 function Field({ label, mono, children }: { label: string; mono?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-[11px] text-zinc-500">{label}</dt>
+      <dt className="text-xs text-zinc-500">{label}</dt>
       <dd className={`mt-0.5 break-all text-zinc-200 ${mono ? "rounded-lg bg-white/[0.04] px-2 py-1 font-mono text-xs" : ""}`}>{children}</dd>
     </div>
   );

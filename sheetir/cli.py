@@ -113,8 +113,12 @@ def _cmd_serve(args) -> int:
 
     import uvicorn
 
+    from .llm import llm_status
+
     os.environ["SHEETIR_DATA"] = args.data
     print(f"SheetTwin UI: http://{args.host}:{args.port}  (data dir: {Path(args.data).resolve()})")
+    st = llm_status()
+    print(f"Language model: {st['model']} at {st['endpoint']}" if st["enabled"] else f"Language model off: {st['reason']}")
     uvicorn.run("sheetir.web.app:app", host=args.host, port=args.port, log_level="warning")
     return 0
 
@@ -122,6 +126,9 @@ def _cmd_serve(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    from .config import apply_offline
+
+    apply_offline()
     p = argparse.ArgumentParser(prog="sheetir", description="Excel workbook -> queryable SheetIR (SQLite)")
     sub = p.add_subparsers(dest="cmd", required=True)
 

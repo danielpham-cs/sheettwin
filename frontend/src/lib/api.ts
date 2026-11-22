@@ -1,4 +1,5 @@
 // Thin client for the SheetIR FastAPI backend (proxied under /api by next.config.ts).
+import { BASE } from "./base";
 
 /** One stored result: the workbook file it came from (by content hash) and how it was parsed. */
 export type Workbook = {
@@ -77,6 +78,7 @@ export type Summary = {
   verification?: Verification | null;
   load_warnings?: string[]; // e.g. "styles_dropped": the formatting part was unreadable and ignored
   user_tables?: Record<string, TableSpec[]>; // sheets whose tables the user defined
+  catalog?: CatalogBrief; // clean tables, families and cards the query agent works from
 };
 
 /** A table the user defined: its range, how many of its first rows are the header, whether the last is a total. */
@@ -164,18 +166,81 @@ export type SqlResult = { columns: string[]; rows: unknown[][]; truncated: boole
 
 export type ExportFile = { name: string; label: string; format: string; size: number; source: boolean };
 
-/** `source` says who answered: the language model (grounded in the IR) or the built-in rules. */
+/** One step of the query agent: the tool it chose, why, and what came back (rows cut for display). */
+export type AgentStep = {
+  n: number;
+  thought: string;
+  tool: "search_catalog" | "describe_table" | "run_sql" | "make_chart" | "final_answer" | string;
+  args: Record<string, unknown>;
+  result: Record<string, unknown>;
+  seconds: number;
+};
+
+/** A chart the agent made from a query result (sheetir.agent.tools.make_chart). */
+export type AgentChart = {
+  chart_id: string;
+  type: "bar" | "line" | "pie" | "scatter";
+  x: string;
+  y: string[];
+  title: string;
+  data: Record<string, unknown>[];
+  truncated?: boolean;
+};
+
+export type AgentResult = { result_id: string; sql: string; columns: string[]; rows: unknown[][]; row_count: number; truncated: boolean };
+
+/** A sheet and range an answer was read from. */
+/** In a project's answers, `workbook_id` names the file the range is in. */
+export type Provenance = { sheet: string; range: string; table_title?: string; card_id?: string; workbook?: string; workbook_id?: string };
+
+/** A named group of workbooks; its chat agent sees the tables of all of them. "default" always exists and holds every
+ * workbook no other project holds. */
+export type Project = { id: string; name: string; created: string | null; workbooks: string[] };
+export const DEFAULT_PROJECT = "default";
+
+/** `source` says who answered: the query agent over the catalog, the language model grounded in the IR, or the
+ * built-in rules. */
 export type ChatReply = {
   reply: string;
   cells: string[];
-  source?: "llm" | "rules";
+  source?: "llm" | "rules" | "agent";
   model?: string;
   sql?: string | null;
   grounded?: boolean;
   ungrounded?: string[];
   /** Set when the model failed and the rules answered instead: why. */
   fallback?: string;
+  steps?: AgentStep[];
+  results?: AgentResult[];
+  chart?: AgentChart | null;
+  provenance?: Provenance[];
+  stopped?: string | null;
+  seconds?: number;
+  /** In a project chat: the workbook the answer is about, when it is about one (cell ids, structure, issues). */
+  workbook?: string;
+  /** The project's documents the model was given with the question (`whole`: all of it, else relevant passages). */
+  knowledge?: { id: string; name: string; whole: boolean }[];
 };
+
+/** A document added to a project for the model to read (its text is extracted at upload). */
+export type KnowledgeDoc = { id: string; name: string; size: number; uploaded: string; chars: number; truncated: boolean };
+export type ProjectKnowledge = {
+  instructions: string;
+  docs: KnowledgeDoc[];
+  limits: { instructions: number; doc_bytes: number; suffixes: string[] };
+};
+
+export type CatalogBrief = {
+  built: boolean;
+  error?: string | null;
+  model?: string | null;
+  stats?: { tables: number; rule_tables: number; llm_tables: number; low_confidence: number; families: number;
+    family_tabs: number; relations: number; cards: number; rows: number; formulas_computed?: number };
+  cards?: { card_id: string; sql_name: string; title: string; row_count: number; time_coverage: string | null;
+    low_confidence: boolean; sheets: string[]; warnings: number }[];
+};
+
+export type LlmStatus = { enabled: boolean; model: string | null; endpoint: string | null; reason: string | null; local: boolean };
 
 export type NodeKind = "param" | "input" | "formula" | "output";
 
@@ -238,7 +303,7 @@ export class ApiError extends Error {
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+  const res = await fetch(BASE + path, init);
   if (!res.ok) {
     let detail: unknown = `${res.status} ${res.statusText}`;
     try {
@@ -262,16 +327,46 @@ const json = (body: unknown): RequestInit => ({
 export const api = {
   workbooks: () => call<Workbook[]>("/api/workbooks"),
   summary: (id: string) => call<Summary>(`/api/workbooks/${id}/summary`),
-  upload: (file: File) => {
+  upload: (file: File, project?: string) => {
     const form = new FormData();
     form.append("file", file);
     form.append("last_modified", String(file.lastModified)); // recorded as the file's provenance
+    if (project) form.append("project", project);
     return call<IngestResult>("/api/workbooks", { method: "POST", body: form });
   },
-  sample: () => call<IngestResult>("/api/workbooks/sample", { method: "POST" }),
+  sample: (project?: string) =>
+    call<IngestResult>(`/api/workbooks/sample${project ? `?project=${encodeURIComponent(project)}` : ""}`, { method: "POST" }),
+  projects: () => call<Project[]>("/api/projects"),
+  createProject: (name: string) => call<Project>("/api/projects", json({ name })),
+  renameProject: (id: string, name: string) =>
+    call<Project>(`/api/projects/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }),
+  deleteProject: (id: string) => call<{ deleted: string }>(`/api/projects/${id}`, { method: "DELETE" }),
+  /** Add a workbook (with its other versions) to a project, taking it out of `moveFrom`. */
+  moveToProject: (id: string, workbook: string, moveFrom?: string) =>
+    call<{ project: string; workbooks: string[] }>(`/api/projects/${id}/workbooks`, json({ workbook, move_from: moveFrom ?? null })),
+  knowledge: (id: string) => call<ProjectKnowledge>(`/api/projects/${id}/knowledge`),
+  setInstructions: (id: string, instructions: string) =>
+    call<{ instructions: string }>(`/api/projects/${id}/instructions`,
+      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instructions }) }),
+  addDoc: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return call<KnowledgeDoc>(`/api/projects/${id}/docs`, { method: "POST", body: form });
+  },
+  removeDoc: (id: string, doc: string) => call<{ deleted: string }>(`/api/projects/${id}/docs/${doc}`, { method: "DELETE" }),
+  docText: (id: string, doc: string) => call<{ text: string }>(`/api/projects/${id}/docs/${doc}/text`),
+  /** Ask about a whole project: data questions go to an agent over all its files; cell ids and questions about
+   * structure or issues are answered about `workbook`, the one on screen. */
+  projectChatStream: (id: string, message: string, lang: string, workbook: string | null, onStep: (s: AgentStep) => void) =>
+    readStream(`/api/projects/${id}/chat/stream`, { message, lang, workbook }, onStep),
   remove: (id: string) => call<{ deleted: string }>(`/api/workbooks/${id}`, { method: "DELETE" }),
   diff: (id: string, against: string) => call<DiffResult>(`/api/workbooks/${id}/diff?against=${encodeURIComponent(against)}`),
   chat: (id: string, message: string, lang: string) => call<ChatReply>(`/api/workbooks/${id}/chat`, json({ message, lang })),
+  /** The same answer as `chat`, with each agent step passed to `onStep` as it finishes (server-sent events). */
+  chatStream: (id: string, message: string, lang: string, onStep: (s: AgentStep) => void) =>
+    readStream(`/api/workbooks/${id}/chat/stream`, { message, lang }, onStep),
+  llm: () => call<LlmStatus>("/api/llm"),
+  catalog: (id: string) => call<CatalogBrief>(`/api/workbooks/${id}/catalog`),
   graph: (id: string, cell?: string) =>
     call<GraphData>(`/api/workbooks/${id}/graph${cell ? `?cell=${encodeURIComponent(cell)}` : ""}`),
   charts: (id: string) => call<ChartData>(`/api/workbooks/${id}/charts`),
@@ -301,9 +396,36 @@ export const api = {
     if (opts.lang) q.set("lang", opts.lang);
     if (opts.inline) q.set("inline", "true");
     const query = q.toString();
-    return `/api/workbooks/${id}/exports/${encodeURIComponent(name)}${query ? `?${query}` : ""}`;
+    return `${BASE}/api/workbooks/${id}/exports/${encodeURIComponent(name)}${query ? `?${query}` : ""}`;
   },
 };
+
+/** POST `body` to a chat stream: each agent step goes to `onStep` as it finishes (server-sent events), then the
+ * answer is returned. */
+async function readStream(path: string, body: unknown, onStep: (s: AgentStep) => void): Promise<ChatReply> {
+  const res = await fetch(`${BASE}${path}`, json(body));
+  if (!res.ok || !res.body) throw new ApiError(`${res.status} ${res.statusText}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    let cut: number;
+    while ((cut = buffer.indexOf("\n\n")) >= 0) {
+      const block = buffer.slice(0, cut);
+      buffer = buffer.slice(cut + 2);
+      const event = /^event: (.*)$/m.exec(block)?.[1];
+      const data = /^data: (.*)$/m.exec(block)?.[1];
+      if (!event || data === undefined) continue;
+      const body = JSON.parse(data);
+      if (event === "step") onStep(body as AgentStep);
+      else if (event === "final") return body as ChatReply;
+      else if (event === "error") throw new ApiError(String(body.error));
+    }
+    if (done) throw new ApiError("the answer stream ended early");
+  }
+}
 
 export function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;

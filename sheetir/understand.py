@@ -39,9 +39,16 @@ LANGUAGE_RULE = {
           "formulas, and the names of products, tables, fields and parameters exactly as they appear in the workbook.",
     "en": "Write the answer in English. Keep cell ids, formulas, and the names of products, tables, fields and "
           "parameters exactly as they appear in the workbook.",
+    "vi": "Write the answer in Vietnamese (tiếng Việt), even though this material is in English. Keep cell ids, "
+          "formulas, and the names of products, tables, fields and parameters exactly as they appear in the workbook.",
 }
-LANGUAGE_NAME = {"zh": "Traditional Chinese (繁體中文)", "en": "English"}
+LANGUAGE_NAME = {"zh": "Traditional Chinese (繁體中文)", "en": "English", "vi": "Vietnamese (tiếng Việt)"}
 _CJK = re.compile(r"[㐀-鿿]")
+# Letters only Vietnamese uses (other accented Latin letters are shared with French, Spanish…), and common unaccented
+# Vietnamese words, for questions typed without diacritics.
+_VI_CHARS = re.compile(r"[ăâđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹĂÂĐƠƯ]")
+_VI_WORDS = re.compile(r"\b(cua|nhung|khong|bao nhieu|nhieu nhat|cao nhat|thap nhat|tong|doanh thu|chi nhanh|"
+                       r"thang|nam|nao|la gi|bang|cac|cho|voi|duoc|trong)\b", re.I)
 _EN_WORDS = re.compile(r"\b(the|is|are|of|and|which|in|uses?|has|have|this|that|with|for|to|by|was|from|it)\b", re.I)
 
 SCHEMA_NOTES = """Database (SQLite, read-only). Query cell contents through cell_values:
@@ -134,17 +141,23 @@ ISSUES_SQL = ("SELECT cell_id, kind, severity, detail FROM issues "
 NO_RESULTS = {
     "en": "Note: this file stores no formula results (it was not saved by Excel), so questions about computed columns "
           "cannot be answered from it. Open the file in Excel, save it, and upload it again.",
+    "vi": "Lưu ý: file này không lưu kết quả của công thức (không được lưu bằng Excel), nên không trả lời được các câu "
+          "hỏi về cột tính toán. Hãy mở file bằng Excel, lưu lại rồi tải lên lần nữa.",
     "zh": "注意：這個檔案沒有儲存任何公式的計算結果（不是由 Excel 存檔的），所以和計算欄位有關的問題無法從檔案回答。"
           "請用 Excel 開啟並存檔後再上傳。",
 }
 NO_QUERY = {
     "en": "I could not look this up in the workbook's data, so I will not guess. Try asking more specifically, for "
           "example naming the table and column.",
+    "vi": "Tôi không tra được câu này trong dữ liệu của workbook nên sẽ không đoán. Hãy hỏi cụ thể hơn, ví dụ nêu "
+          "tên bảng và cột.",
     "zh": "我無法從活頁簿的資料中查到這個答案，因此不做猜測。請試著問得更具體，例如指出表格和欄位名稱。",
 }
-RESULT_TABLE = {"en": "Here is what the workbook's data shows:", "zh": "以下是活頁簿資料的查詢結果："}
+RESULT_TABLE = {"en": "Here is what the workbook's data shows:", "zh": "以下是活頁簿資料的查詢結果：",
+                "vi": "Đây là kết quả truy vấn từ dữ liệu của workbook:"}
 UNVERIFIED = {"en": "These numbers could not be found in the workbook data and may be wrong: ",
-              "zh": "以下數字無法在活頁簿資料中核對，可能有誤："}
+              "zh": "以下數字無法在活頁簿資料中核對，可能有誤：",
+              "vi": "Không đối chiếu được các con số sau với dữ liệu của workbook, có thể sai: "}
 
 
 def text_language(text: str) -> str:
@@ -153,6 +166,8 @@ def text_language(text: str) -> str:
     text = re.sub(r"`[^`]*`", "", _CELL.sub("", text))
     if _CJK.search(text):
         return "zh"
+    if _VI_CHARS.search(text) or len(_VI_WORDS.findall(text)) >= 2:
+        return "vi"
     return "en" if _EN_WORDS.search(text) else "neutral"
 
 
@@ -168,19 +183,38 @@ def question_language(question: str, default: str = "en") -> str:
 _REFS = re.compile(r"(?:'[^']+'|[A-Za-z_][\w.]*)![$A-Z]+\$?\d+(?::\$?[A-Z]+\$?\d+)?|\$?\b[A-Z]{1,3}\$?\d+\b"
                    r"|\bR(?:\[-?\d+\]|\d+)?C(?:\[-?\d+\]|\d+)?")
 _LIST_MARKER = re.compile(r"^\s*\d+[.)]\s", re.M)
-_NUMBER = re.compile(r"(?<![A-Za-z0-9_.])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![A-Za-z0-9_])(\s?%)?")
+# Written either way: 1,234,567.5 (English) or 1.234.567,5 (Vietnamese, European), 2,5 as a decimal comma.
+_NUMBER = re.compile(r"(?<![A-Za-z0-9_.,])(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+,\d+"
+                     r"|\d+(?:\.\d+)?)(?![A-Za-z0-9_]|[.,]\d)(\s?%)?")
+
+
+def _readings(raw: str) -> list[tuple[float, float]]:
+    """(value, tolerance) for each way `raw` can be read: '1.234' is 1234 in Vietnamese and 1.234 in English."""
+    def reading(s: str) -> tuple[float, float]:
+        dec = len(s.split(".")[1]) if "." in s else 0
+        return float(s), 0.5 * 10 ** -dec + 1e-9
+    out = []
+    if re.fullmatch(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?", raw):
+        out.append(reading(raw.replace(".", "").replace(",", ".")))
+    if re.fullmatch(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?", raw):
+        out.append(reading(raw.replace(",", "")))
+    if re.fullmatch(r"\d+,\d+", raw):
+        out.append(reading(raw.replace(",", ".")))
+    if re.fullmatch(r"\d+(?:\.\d+)?", raw):
+        out.append(reading(raw))
+    return out
 
 
 def ungrounded_numbers(answer: str, sources: list[str], extra: tuple[float, ...] = ()) -> list[str]:
     """Numbers in `answer` that appear in none of `sources` (to the precision the answer shows them; a percentage may
-    stand for a fraction in the data, 15% for 0.15). `extra` holds numbers SheetIR vouches for, such as a row count."""
+    stand for a fraction in the data, 15% for 0.15). `extra` holds numbers SheetIR vouches for, such as a row count.
+    A number written so that it reads two ways (1.234) is grounded when either reading is."""
     known = [float(n) for s in sources for n in re.findall(r"\d+(?:\.\d+)?", s)] + [float(x) for x in extra]
     text = _LIST_MARKER.sub("", _REFS.sub(" ", answer))
     out = []
     for raw, pct in _NUMBER.findall(text):
-        x = float(raw.replace(",", ""))
-        tol = 0.5 * 10 ** -(len(raw.split(".")[1]) if "." in raw else 0) + 1e-9
-        if not any(abs(v - x) <= tol or (pct and abs(v * 100 - x) <= tol) for v in known):
+        if not any(abs(v - x) <= tol or (pct and abs(v * 100 - x) <= tol)
+                   for x, tol in _readings(raw) for v in known):
             out.append(raw + ("%" if pct else ""))
     return list(dict.fromkeys(out))
 
@@ -192,9 +226,10 @@ def _result_table(columns: list[str], rows: list[list], lang: str) -> str:
     return RESULT_TABLE[lang] + "\n\n" + "\n".join(lines)
 
 
-def ask(con: sqlite3.Connection, question: str, llm: LLM, lang: str = "en") -> dict:
+def ask(con: sqlite3.Connection, question: str, llm: LLM, lang: str = "en", project_context: str = "") -> dict:
     """Answer a question about the workbook. `lang` is the UI language, used only when the question's own language
-    cannot be told. Returns {reply, cells, unknown_cells, sql, route, lang, grounded, ungrounded, model}."""
+    cannot be told. `project_context`: the project's instructions and documents (sheetir.web.knowledge); numbers taken
+    from it count as grounded. Returns {reply, cells, unknown_cells, sql, route, lang, grounded, ungrounded, model}."""
     lang = question_language(question, lang)
     rule = "\n" + LANGUAGE_RULE[lang]
     context = f"{SCHEMA_NOTES}\n\n# Sketch\n{sketch(con)}"
@@ -207,7 +242,7 @@ def ask(con: sqlite3.Connection, question: str, llm: LLM, lang: str = "en") -> d
                 "FROM cells c LEFT JOIN tables t ON t.table_id = c.table_id "
                 "LEFT JOIN fields f ON f.table_id = c.table_id AND f.col = c.col")
     context += _table_views(con)
-    ask_q = f"{context}\n\n# Question\n{question}"
+    ask_q = f"{context}\n\n{project_context}\n\n# Question\n{question}" if project_context else f"{context}\n\n# Question\n{question}"
     plan = llm.json(SYSTEM + PLAN_RULES + rule, ask_q, PLAN_SCHEMA, "plan")
     route, sql, answer = plan["route"], plan["sql"].strip(), plan["answer"].strip()
     if route not in ("structure", "data", "issues"):
@@ -252,11 +287,11 @@ def ask(con: sqlite3.Connection, question: str, llm: LLM, lang: str = "en") -> d
                     result["counts"][key][v] = result["counts"][key].get(v, 0) + 1
             extra += tuple(n for d in result["counts"].values() for n in d.values())
         data = json.dumps(result, ensure_ascii=False, default=str)
-        sources = [question, data]
+        sources = [question, project_context, data]
         answer_q = f"{ask_q}\n\n# Query\n{sql}\n\n# Result (JSON)\n{data}"
         answer = llm.json(SYSTEM + ANSWER_RULES + rule, answer_q, ANSWER_SCHEMA, "answer")["answer"].strip()
     else:
-        sources, answer_q = [question, context], ask_q
+        sources, answer_q = [question, context, project_context], ask_q
 
     # Checked by SheetIR: the reply's language, then its numbers. Each gets one rewrite.
     if sources and text_language(answer) not in (lang, "neutral"):

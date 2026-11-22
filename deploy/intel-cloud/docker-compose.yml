@@ -1,0 +1,72 @@
+# SheetTwin on the ASUS UGen hackathon VM (Intel Cloud, 2x Arc Pro B70 32GB), served through JupyterLab's
+# jupyter-server-proxy at https://<jupyter-host>/<n>/proxy/8765/ (the VM has no public port).
+#
+#   cd deploy/intel-cloud && docker compose up -d --build      # first start: ~5 min (vLLM compiles + captures graphs)
+#   docker compose ps / logs -f llm / logs -f sheettwin
+#
+# The UI is built with a placeholder prefix that the backend fills in per request from the proxy's
+# X-Forwarded-Prefix header (sheetir/web/basepath.py): the same image works at any /<n>/proxy/8765/ and at :8765/.
+#
+# Settings (environment or a .env file next to this one):
+#   SHEETTWIN_MODEL      Hugging Face model to serve, default Qwen/Qwen3.6-35B-A3B-FP8 (needs both cards, TP=2)
+name: sheettwin
+
+services:
+  llm:
+    # vLLM 0.33.0 for Intel XPU, pinned by digest (0.26 was ~25x slower here: eager mode only).
+    image: vllm/vllm-openai-xpu@sha256:be3a9aea234be64ffc2816ac561c597e0f0b1f44a61a7f4912780e4d77450086
+    network_mode: host
+    ipc: host
+    privileged: true
+    shm_size: 16g
+    devices: ["/dev/dri:/dev/dri"]
+    volumes:
+      - /dev/dri/by-path:/dev/dri/by-path
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - vllm-cache:/root/.cache/vllm                 # torch.compile cache: later restarts are faster
+    environment:
+      HF_HUB_OFFLINE: "1"                            # weights must already be in the HF cache (hf download ...)
+      VLLM_XPU_ENABLE_XPU_GRAPH: "1"
+    entrypoint: ["bash", "-c"]
+    command:
+      - >-
+        source /opt/intel/oneapi/setvars.sh --force >/dev/null 2>&1;
+        exec python -m vllm.entrypoints.openai.api_server
+        --model ${SHEETTWIN_MODEL:-Qwen/Qwen3.6-35B-A3B-FP8} --served-model-name sheettwin-llm
+        --tensor-parallel-size 2 --host 127.0.0.1 --port 8000
+        --gpu-memory-utilization 0.85 --max-model-len 32768 --block-size 64
+        --trust-remote-code --reasoning-parser qwen3
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15m
+    restart: unless-stopped
+
+  sheettwin:
+    build:
+      context: ../..
+      args:
+        NEXT_PUBLIC_BASE_PATH: /__SHEETTWIN_BASE__     # placeholder, filled in per request
+    image: sheettwin:intel-cloud
+    network_mode: host                               # reaches vLLM on 127.0.0.1 (the docker bridge cannot here)
+    command: ["sheetir", "serve", "--host", "127.0.0.1", "--port", "8765", "--data", "/data"]
+    volumes:
+      - sheettwin-data:/data
+    environment:
+      OPENAI_BASE_URL: http://127.0.0.1:8000/v1
+      OPENAI_API_KEY: local
+      SHEETIR_LLM_MODEL: sheettwin-llm
+      # Each signed-in user gets their own data: the Intel Cloud gateway passes the user's e-mail in this header
+      # (sheetir/web/users.py). Safe here because the gateway drops any copy the browser sends and the app only
+      # listens on 127.0.0.1.
+      SHEETIR_USER_HEADER: Oidc_claim_email
+    depends_on:
+      llm:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  sheettwin-data:                                    # project "sheettwin" -> volume sheettwin_sheettwin-data (kept)
+  vllm-cache:

@@ -9,12 +9,11 @@ import {
 } from "recharts";
 import { api, type ChartData, type ChartField } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useChartPalette } from "@/lib/theme";
 
-// Dataviz reference palette, dark steps; validated (all checks pass) against the card surface #141419.
-const CAT = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
+// Categorical palette and chart ink: useChartPalette() (lib/theme.ts), light or dark steps by theme.
 // Status colors are reserved for severity and always shown with an icon + label.
 const SEV = { high: "#d03b3b", medium: "#fab219", low: "#898781" } as const;
-const INK = { primary: "#ffffff", secondary: "#c3c2b7", muted: "#898781", grid: "#2c2c2a", surface: "#141419" };
 
 // Color follows the entity: each role keeps its slot whatever the counts are.
 const ROLE_ORDER = ["input", "derived", "output", "label", "orphan"] as const;
@@ -31,7 +30,7 @@ function fmt(v: number, percent = false) {
 function ChartTooltip({ active, payload, percent, unit }: TooltipContentProps<number, string> & { percent?: boolean; unit?: string | null }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-950/95 px-3 py-2 text-xs shadow-2xl backdrop-blur">
+    <div className="rounded-md border border-white/10 bg-zinc-950/95 px-3 py-2 text-xs shadow-2xl">
       {payload.map((p) => {
         const d = p.payload as Datum & Record<string, unknown>;
         return (
@@ -53,7 +52,7 @@ function Card({ title, subtitle, children, className = "" }: { title: string; su
     <motion.section
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`rounded-3xl border border-white/[0.07] bg-[#141419]/90 p-5 shadow-xl backdrop-blur ${className}`}
+      className={`rounded-xl border border-white/[0.07] bg-surface/90 p-5 shadow-xl ${className}`}
     >
       <h3 className="text-sm font-medium text-white">{title}</h3>
       {subtitle && <p className="mt-0.5 text-xs text-zinc-500">{subtitle}</p>}
@@ -64,6 +63,7 @@ function Card({ title, subtitle, children, className = "" }: { title: string; su
 
 /** Donut with the total in the middle and a legend that carries labels, counts and shares. */
 function Donut({ data, center, percent, unit, icon }: { data: Datum[]; center: string; percent?: boolean; unit?: string | null; icon?: (d: Datum) => React.ReactNode }) {
+  const { INK } = useChartPalette();
   const total = data.reduce((s, d) => s + d.value, 0);
   return (
     <div className="flex flex-col items-center gap-5 sm:flex-row">
@@ -78,7 +78,7 @@ function Donut({ data, center, percent, unit, icon }: { data: Datum[]; center: s
         <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
           <div>
             <div className="text-2xl font-semibold text-white">{fmt(total, percent)}</div>
-            <div className="text-[11px] text-zinc-500">{center}</div>
+            <div className="text-xs text-zinc-500">{center}</div>
           </div>
         </div>
       </div>
@@ -97,6 +97,7 @@ function Donut({ data, center, percent, unit, icon }: { data: Datum[]; center: s
 }
 
 function HBar({ data, percent, unit, height, counts }: { data: Datum[]; percent?: boolean; unit?: string | null; height?: number; counts?: boolean }) {
+  const { INK } = useChartPalette();
   // Room for the longest category label (CJK glyphs are about twice as wide as Latin ones).
   const labelWidth = Math.min(220, Math.max(70, ...data.map((d) => [...d.name].reduce((w, ch) => w + (ch.charCodeAt(0) > 0x2e80 ? 12.5 : 7), 0) + 12)));
   return (
@@ -105,8 +106,8 @@ function HBar({ data, percent, unit, height, counts }: { data: Datum[]; percent?
         <CartesianGrid horizontal={false} stroke={INK.grid} />
         <XAxis type="number" tick={{ fill: INK.muted, fontSize: 11 }} axisLine={false} tickLine={false}
           allowDecimals={!counts} tickFormatter={(v) => fmt(v, percent)} />
-        <YAxis type="category" dataKey="name" width={labelWidth} tick={{ fill: INK.secondary, fontSize: 12 }} axisLine={{ stroke: "#383835" }} tickLine={false} />
-        <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={(p) => <ChartTooltip {...(p as TooltipContentProps<number, string>)} percent={percent} unit={unit} />} />
+        <YAxis type="category" dataKey="name" width={labelWidth} tick={{ fill: INK.secondary, fontSize: 12 }} axisLine={{ stroke: INK.axis }} tickLine={false} />
+        <Tooltip cursor={{ fill: INK.cursor }} content={(p) => <ChartTooltip {...(p as TooltipContentProps<number, string>)} percent={percent} unit={unit} />} />
         <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={22} isAnimationActive animationDuration={600}
           label={{ position: "right", fill: INK.secondary, fontSize: 11, formatter: (v: unknown) => fmt(Number(v), percent) }}
           shape={(props: React.ComponentProps<typeof Rectangle> & { payload?: Datum }) => <Rectangle {...props} fill={props.payload?.fill} />} />
@@ -117,7 +118,7 @@ function HBar({ data, percent, unit, height, counts }: { data: Datum[]; percent?
 
 function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string; icon?: typeof ChartPie }[]; onChange: (v: T) => void }) {
   return (
-    <div className="flex flex-wrap rounded-xl border border-white/10 bg-white/[0.03] p-0.5">
+    <div className="flex flex-wrap rounded-md border border-white/10 bg-white/[0.03] p-0.5">
       {options.map(({ value: v, label, icon: Icon }) => (
         <button key={v} onClick={() => onChange(v)}
           className={`flex items-center gap-1.5 rounded-[10px] px-2.5 py-1 text-xs transition ${v === value ? "bg-white/10 text-white" : "text-zinc-400 hover:text-white"}`}>
@@ -133,6 +134,7 @@ function fieldLabel(f: ChartField) {
 }
 
 function TableChart({ table }: { table: ChartData["tables"][number] }) {
+  const { CAT, INK } = useChartPalette();
   const { t } = useI18n();
   const numeric = table.fields.filter((f) => f.numeric);
   const groupable = table.fields.filter((f) => !f.numeric && f.distinct > 1 && f.distinct <= 12 && f.distinct < table.rows.length);
@@ -179,13 +181,13 @@ function TableChart({ table }: { table: ChartData["tables"][number] }) {
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-xs text-zinc-500">
         <label className="flex items-center gap-2">{t.charts.value}
           <select value={field.name} onChange={(e) => setValueName(e.target.value)}
-            className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-violet-400/50">
+            className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-blue-400/50">
             {numeric.map((f) => <option key={f.name} value={f.name}>{fieldLabel(f)}{f.missing === rowsTotal ? t.charts.noValue : ""}</option>)}
           </select>
         </label>
         <label className="flex items-center gap-2">{t.charts.group}
           <select value={groupName} onChange={(e) => setGroupName(e.target.value)}
-            className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-violet-400/50">
+            className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-sm text-zinc-100 outline-none focus:border-blue-400/50">
             <option value="">{t.charts.noGroup}</option>
             {groupable.map((f) => <option key={f.name} value={f.name}>{t.charts.groupBy(f.header)}</option>)}
           </select>
@@ -195,7 +197,7 @@ function TableChart({ table }: { table: ChartData["tables"][number] }) {
             <Segmented value={form} onChange={setForm} options={[{ value: "pie", label: t.charts.pie, icon: ChartPie }, { value: "bar", label: t.charts.bar, icon: ChartColumn }]} />
           )}
           <button onClick={() => setShowTable((s) => !s)}
-            className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 transition ${showTable ? "border-violet-400/40 bg-violet-500/10 text-violet-200" : "border-white/10 text-zinc-400 hover:text-white"}`}>
+            className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 transition ${showTable ? "border-blue-400/40 bg-blue-500/10 text-blue-200" : "border-white/10 text-zinc-400 hover:text-white"}`}>
             <Table2 className="size-3.5" />{t.charts.dataTable}
           </button>
         </div>
@@ -203,7 +205,7 @@ function TableChart({ table }: { table: ChartData["tables"][number] }) {
 
       <div className="mt-5">
         {empty ? (
-          <div className="flex items-start gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/[0.07] p-4 text-sm text-amber-100">
+          <div className="flex items-start gap-3 rounded-lg border border-amber-400/20 bg-amber-500/[0.07] p-4 text-sm text-amber-100">
             <Info className="mt-0.5 size-4 shrink-0 text-amber-300" />
             <div>
               <p>{t.charts.missingTitle(<b>{field.header}</b>)}</p>
@@ -216,7 +218,7 @@ function TableChart({ table }: { table: ChartData["tables"][number] }) {
           <HBar data={data} percent={field.percent} unit={field.unit} />
         )}
         {!empty && (
-          <p className="mt-3 text-[11px] text-zinc-600">
+          <p className="mt-3 text-xs text-zinc-600">
             {groupName ? t.charts.noteGroup(table.fields.find((f) => f.name === groupName)?.header ?? groupName, fieldLabel(field)) : t.charts.noteRows(fieldLabel(field))}
             {!groupName && rowsTotal > MAX_BARS ? t.charts.noteTop(MAX_BARS) : ""}
             {field.missing > 0 && field.missing < rowsTotal ? t.charts.noteMissing(field.missing) : ""}
@@ -226,7 +228,7 @@ function TableChart({ table }: { table: ChartData["tables"][number] }) {
       </div>
 
       {showTable && !empty && (
-        <div className="mt-4 max-h-72 overflow-auto rounded-xl border border-white/[0.07]">
+        <div className="mt-4 max-h-72 overflow-auto rounded-md border border-white/[0.07]">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-zinc-900 text-zinc-400"><tr><th className="px-3 py-2 text-left font-medium">{groupName ? t.charts.colGroup : t.charts.colRow}</th><th className="px-3 py-2 text-right font-medium">{fieldLabel(field)}</th></tr></thead>
             <tbody>
@@ -242,6 +244,7 @@ function TableChart({ table }: { table: ChartData["tables"][number] }) {
 }
 
 export function ChartsView({ workbookId, workbookName }: { workbookId: string | null; workbookName?: string }) {
+  const { CAT, INK } = useChartPalette();
   const [result, setResult] = useState<{ id: string; data?: ChartData; error?: string } | null>(null);
   const [tableId, setTableId] = useState<number | null>(null);
   const { t } = useI18n();
@@ -260,7 +263,7 @@ export function ChartsView({ workbookId, workbookName }: { workbookId: string | 
 
   if (!workbookId) return <div className="grid flex-1 place-items-center text-sm text-zinc-500">{t.graph.empty}</div>;
   if (current?.error) return <div className="grid flex-1 place-items-center text-sm text-rose-200">{current.error}</div>;
-  if (!data) return <div className="grid flex-1 place-items-center"><Loader2 className="size-8 animate-spin text-violet-300" /></div>;
+  if (!data) return <div className="grid flex-1 place-items-center"><Loader2 className="size-8 animate-spin text-blue-300" /></div>;
 
   const roles: Datum[] = ROLE_ORDER.flatMap((r, i) => {
     const n = data.roles.find((x) => x.role === r)?.n;
@@ -293,7 +296,7 @@ export function ChartsView({ workbookId, workbookName }: { workbookId: string | 
             [t.charts.kpi.sheets, data.sheets.length, ""],
             [t.charts.kpi.issues, totalIssues, severity.find((s) => s.sev === "high") ? t.charts.highCount(severity.find((s) => s.sev === "high")!.value) : t.charts.noHigh],
           ].map(([label, value, note]) => (
-            <div key={label as string} className="rounded-2xl border border-white/[0.07] bg-[#141419]/90 px-5 py-4">
+            <div key={label as string} className="rounded-lg border border-white/[0.07] bg-surface/90 px-5 py-4">
               <div className="text-xs text-zinc-500">{label}</div>
               <div className="mt-1 text-3xl font-semibold text-white">{(value as number).toLocaleString(t.locale)}</div>
               {note && <div className="mt-0.5 text-xs text-zinc-500">{note}</div>}
@@ -319,8 +322,8 @@ export function ChartsView({ workbookId, workbookName }: { workbookId: string | 
               <BarChart data={data.sheets} layout="vertical" margin={{ left: 8, right: 40 }} barGap={2} barCategoryGap={10}>
                 <CartesianGrid horizontal={false} stroke={INK.grid} />
                 <XAxis type="number" tick={{ fill: INK.muted, fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <YAxis type="category" dataKey="sheet" width={90} tick={{ fill: INK.secondary, fontSize: 12 }} axisLine={{ stroke: "#383835" }} tickLine={false} />
-                <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={(p) => <ChartTooltip {...(p as TooltipContentProps<number, string>)} />} />
+                <YAxis type="category" dataKey="sheet" width={90} tick={{ fill: INK.secondary, fontSize: 12 }} axisLine={{ stroke: INK.axis }} tickLine={false} />
+                <Tooltip cursor={{ fill: INK.cursor }} content={(p) => <ChartTooltip {...(p as TooltipContentProps<number, string>)} />} />
                 <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 12, color: INK.secondary }} />
                 <Bar dataKey="cells" name={t.charts.kpi.cells} fill={CAT[0]} radius={[0, 4, 4, 0]} maxBarSize={16}
                   label={{ position: "right", fill: INK.secondary, fontSize: 11 }} />

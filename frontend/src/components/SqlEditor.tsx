@@ -23,6 +23,8 @@ type Props = {
   onError: (message: string | null) => void;
   schema: SqlSchema;
   didYouMean: (word: string) => string;
+  /** The editor's accessible name, read by screen readers. */
+  label: string;
   ref?: Ref<SqlEditorHandle>;
 };
 
@@ -142,43 +144,45 @@ const sqlFor = (schema: SqlSchema) => [
   SQLite.language.data.of({ autocomplete: columnCompletions(schema) }),
 ];
 
+// Colors are the app's CSS variables, so the editor follows the light / dark theme without reconfiguring.
 const theme = EditorView.theme({
-  "&": { height: "100%", backgroundColor: "transparent", color: "#f4f4f5", fontSize: "13px" },
+  "&": { height: "100%", backgroundColor: "transparent", color: "var(--color-zinc-100)", fontSize: "13px" },
   "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "var(--font-mono, ui-monospace, monospace)", lineHeight: "1.65" },
-  ".cm-content": { padding: "12px 0", caretColor: "#c4b5fd" },
-  ".cm-cursor": { borderLeftColor: "#c4b5fd" },
-  ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "#52525b" },
-  ".cm-activeLine": { backgroundColor: "rgba(255,255,255,0.025)" },
-  ".cm-activeLineGutter": { backgroundColor: "transparent", color: "#a1a1aa" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "rgba(139,92,246,0.3) !important" },
-  ".cm-matchingBracket": { backgroundColor: "rgba(139,92,246,0.25)", outline: "none" },
-  ".cm-tooltip": { backgroundColor: "#1b1b22", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", overflow: "hidden" },
+  ".cm-content": { padding: "12px 0", caretColor: "var(--color-blue-300)" },
+  ".cm-cursor": { borderLeftColor: "var(--color-blue-300)" },
+  ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--color-zinc-600)" },
+  ".cm-activeLine": { backgroundColor: "color-mix(in srgb, var(--color-white) 2.5%, transparent)" },
+  ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--color-zinc-400)" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "rgba(59,130,246,0.3) !important" },
+  ".cm-matchingBracket": { backgroundColor: "rgba(59,130,246,0.25)", outline: "none" },
+  ".cm-tooltip": { backgroundColor: "var(--surface-2)", border: "1px solid color-mix(in srgb, var(--color-white) 10%, transparent)", borderRadius: "8px", overflow: "hidden" },
   ".cm-tooltip-autocomplete > ul": { fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: "12.5px", maxHeight: "16em" },
-  ".cm-tooltip-autocomplete > ul > li": { padding: "2px 10px 2px 6px", color: "#d4d4d8" },
-  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "rgba(139,92,246,0.3)", color: "#fff" },
-  ".cm-completionDetail": { color: "#71717a", fontStyle: "normal", marginLeft: "8px" },
-  ".cm-completionMatchedText": { textDecoration: "none", color: "#c4b5fd" },
+  ".cm-tooltip-autocomplete > ul > li": { padding: "2px 10px 2px 6px", color: "var(--color-zinc-300)" },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "rgba(59,130,246,0.3)", color: "var(--color-white)" },
+  ".cm-completionDetail": { color: "var(--color-zinc-500)", fontStyle: "normal", marginLeft: "8px" },
+  ".cm-completionMatchedText": { textDecoration: "none", color: "var(--color-blue-300)" },
   ".cm-diagnostic": { padding: "4px 10px", fontSize: "12px" },
-  ".cm-diagnostic-error": { borderLeft: "3px solid #fb7185", color: "#fecdd3" },
+  ".cm-diagnostic-error": { borderLeft: "3px solid #fb7185", color: "var(--color-rose-200)" },
 }, { dark: true });
 
 const highlight = HighlightStyle.define([
-  { tag: tags.keyword, color: "#c4b5fd", fontWeight: "500" },
-  { tag: [tags.string, tags.special(tags.string)], color: "#6ee7b7" },
-  { tag: tags.number, color: "#fcd34d" },
-  { tag: tags.bool, color: "#fcd34d" },
-  { tag: tags.null, color: "#fda4af" },
-  { tag: [tags.lineComment, tags.blockComment], color: "#71717a", fontStyle: "italic" },
-  { tag: [tags.operator, tags.punctuation, tags.paren], color: "#a1a1aa" },
-  { tag: tags.typeName, color: "#67e8f9" },
+  { tag: tags.keyword, color: "var(--color-blue-300)", fontWeight: "500" },
+  { tag: [tags.string, tags.special(tags.string)], color: "var(--color-emerald-300)" },
+  { tag: tags.number, color: "var(--color-amber-300)" },
+  { tag: tags.bool, color: "var(--color-amber-300)" },
+  { tag: tags.null, color: "var(--color-rose-300)" },
+  { tag: [tags.lineComment, tags.blockComment], color: "var(--color-zinc-500)", fontStyle: "italic" },
+  { tag: [tags.operator, tags.punctuation, tags.paren], color: "var(--color-zinc-400)" },
+  { tag: tags.typeName, color: "var(--color-cyan-300)" },
 ]);
 
 /** A SQL editor with schema-aware completion and SQLite's own errors marked as you type. */
-export function SqlEditor({ value, onChange, onRun, check, onError, schema, didYouMean, ref }: Props) {
+export function SqlEditor({ value, onChange, onRun, check, onError, schema, didYouMean, label, ref }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
+  const a11y = useRef(new Compartment());
   // Latest props for the editor's callbacks, which are created once.
   const props = useRef({ onChange, onRun, check, onError, schema, didYouMean });
   useEffect(() => { props.current = { onChange, onRun, check, onError, schema, didYouMean }; });
@@ -202,6 +206,7 @@ export function SqlEditor({ value, onChange, onRun, check, onError, schema, didY
           lineNumbers(), highlightActiveLine(), history(), bracketMatching(), closeBrackets(),
           autocompletion({ icons: false }),
           language.current.of(sqlFor(props.current.schema)),
+          a11y.current.of(EditorView.contentAttributes.of({ "aria-label": label })),
           syntaxHighlighting(highlight), theme, lint, lintGutter(),
           Prec.highest(keymap.of([{ key: "Mod-Enter", run: () => { props.current.onRun(); return true; } }])),
           keymap.of([...closeBracketsKeymap, ...completionKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
@@ -222,6 +227,11 @@ export function SqlEditor({ value, onChange, onRun, check, onError, schema, didY
   useEffect(() => {
     view.current?.dispatch({ effects: language.current.reconfigure(sqlFor(schema)) });
   }, [schema]);
+
+  // The name follows the UI language.
+  useEffect(() => {
+    view.current?.dispatch({ effects: a11y.current.reconfigure(EditorView.contentAttributes.of({ "aria-label": label })) });
+  }, [label]);
 
   useImperativeHandle(ref, () => ({
     insert(text: string) {
