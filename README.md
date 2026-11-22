@@ -22,6 +22,7 @@ local one, no data leaves the machine.
 
 - [What it does](#what-it-does)
 - [Quick start](#quick-start)
+  - [Troubleshooting](#troubleshooting)
 - [Web UI](#web-ui)
 - [Chat with a language model](#chat-with-a-language-model)
 - [Audit report](#audit-report)
@@ -102,6 +103,47 @@ uv run sheetir serve         # http://127.0.0.1:8765
 no separate `uv sync` step. Run `sheetir serve` from the repository root: `.env` and the default `data/` folder are
 found relative to the current directory.
 
+#### Without a global uv (Windows, PowerShell)
+
+If uv is not installed (or you would rather not install it system-wide), put it inside the project's virtual
+environment. Everything then lives in `.venv` and `frontend/node_modules`, and deleting those two folders removes it all.
+
+```powershell
+cd sheettwin
+python -m venv .venv                           # Python 3.11+
+.\.venv\Scripts\python -m pip install uv       # uv inside .venv only
+.\.venv\Scripts\uv sync --inexact              # the exact versions in uv.lock, plus the dev tools
+
+cd frontend; npm install; npm run build; cd ..
+
+copy .env.example .env                         # optional: language model for the chat
+
+.\.venv\Scripts\python -m sheetir serve        # http://127.0.0.1:8765
+```
+
+Install from `uv.lock` rather than with a plain `pip install -e .`: pip takes the newest release of every dependency,
+which can differ from what the team tested (see the Smart App Control note below for one that breaks).
+
+Use `python -m sheetir ...` to run any command; it is the same as `sheetir ...`. After activating the environment
+(`.\.venv\Scripts\activate`), `python -m sheetir serve` is enough.
+
+> **Windows Smart App Control.** Windows 11 with Smart App Control on blocks unsigned programs it has no reputation
+> for, with *"An Application Control policy has blocked this file"* (應用程式控制原則已封鎖此檔案). Two places hit it:
+> the `sheetir.exe` launcher that uv writes into `.venv\Scripts` (so `sheetir serve` and `uv run sheetir serve` fail
+> while `python -m sheetir serve` works), and some freshly released wheels (DuckDB 2.0.1's `_duckdb.pyd` was blocked;
+> 2.0.0, the version in `uv.lock`, loads). Run commands through `python -m sheetir`, and install from `uv.lock`.
+> Turning Smart App Control off is a one-way switch on most Windows 11 builds, so it is not needed or recommended.
+
+#### After pulling new code
+
+| What changed | Run |
+|---|---|
+| Python dependencies (`pyproject.toml`, `uv.lock`) | `uv sync` (or `.\.venv\Scripts\uv sync --inexact`); `uv run` does it by itself |
+| Anything under `frontend/` | `cd frontend; npm install; npm run build` |
+| Anything at all | restart `sheetir serve` |
+
+The built UI in `sheetir/web/static/app` is not in git, so a pull alone does not update what `/` and `/app/` show.
+
 | URL | Page |
 |---|---|
 | `http://127.0.0.1:8765/` | Landing page: what SheetTwin does, with screenshots (for demos and reviewers) |
@@ -135,7 +177,20 @@ uv run sheetir sample samples/quotation.xlsx            # generate the sample wo
 uv run sheetir build  samples/quotation.xlsx -o out/q.db
 uv run sheetir trace  out/q.db "Quote!J13" --depth 2
 uv run sheetir sql    out/q.db "SELECT cell_id, kind, detail FROM issues"
+uv run sheetir twin   samples/quotation.xlsx -o model.py  # Python twin with V1 / V2 verification
 ```
+
+### Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `[Errno 10048] error while attempting to bind on address ('127.0.0.1', 8765)` | Another `sheetir serve` is already running. Use it, stop it (Ctrl+C in its terminal), or start this one with `--port 8766` |
+| `An Application Control policy has blocked this file` | Windows Smart App Control: see the note under [Without a global uv](#without-a-global-uv-windows-powershell). Use `python -m sheetir` |
+| `ModuleNotFoundError` (e.g. `xlrd`, `duckdb`, `pycel`) after a pull | A dependency was added: `uv sync`. Without the dev tools, the tests fail to start with *"starlette.testclient module requires the httpx2 package"* |
+| The UI looks old after a pull | Rebuild it: `cd frontend; npm run build`, then restart `sheetir serve` |
+| A workbook parsed by an older SheetIR shows no summary, and **轉換檔案** says `500 Internal Server Error` | Its database predates a table the current code reads (e.g. `relations`), and the summary request fails before the UI can offer **重新解析**. Upload the same file again (identical bytes are re-parsed when their IR schema is old), or `POST /api/workbooks/<id>/rebuild` |
+| Chat says the AI could not answer and the built-in rules replied | The model endpoint failed; hover the notice for the reason. With Ollama, `OPENAI_BASE_URL` must end in `/v1` (`http://<host>:11434/v1`) |
+| Chat answers `500` only under `npm run dev` | The dev proxy cut a slow model reply. `next.config.ts` raises its limit to 5 minutes; `sheetir serve` on :8765 has no such limit |
 
 ### Sample workbook
 
