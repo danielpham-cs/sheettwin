@@ -127,6 +127,12 @@ which can differ from what the team tested (see the Smart App Control note below
 Use `python -m sheetir ...` to run any command; it is the same as `sheetir ...`. After activating the environment
 (`.\.venv\Scripts\activate`), `python -m sheetir serve` is enough.
 
+The one-command start, like `uv run sheetir serve` above (installs any new dependency from `uv.lock`, then starts):
+
+```powershell
+.\.venv\Scripts\uv run python -m sheetir serve   # or `uv run python -m sheetir serve` with a global uv
+```
+
 > **Windows Smart App Control.** Windows 11 with Smart App Control on blocks unsigned programs it has no reputation
 > for, with *"An Application Control policy has blocked this file"* (應用程式控制原則已封鎖此檔案). Two places hit it:
 > the `sheetir.exe` launcher that uv writes into `.venv\Scripts` (so `sheetir serve` and `uv run sheetir serve` fail
