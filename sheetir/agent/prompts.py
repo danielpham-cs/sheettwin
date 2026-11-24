@@ -55,10 +55,13 @@ NEEDS_RESULT = ("Your answer states figures but cites no query result. Run the q
                 "final_answer with its result_ids.")
 
 
-def system_prompt(summary: str, lang: str, rows_to_llm: int, context: str = "") -> str:
-    """`context`: the project's instructions and documents (sheetir.web.knowledge), after the rules."""
+def system_prompt(summary: str, lang: str, rows_to_llm: int, context: str = "", tools: str = "") -> str:
+    """`context`: the project's instructions and documents (sheetir.web.knowledge), after the rules. `tools`: more
+    tools and their rules (the what-if tools, sheetir.agent.whatif_tools)."""
     rule = f"Answer in {LANGUAGE_NAME.get(lang, 'English')}, the language of the question."
     prompt = SYSTEM.format(summary=summary, rows_to_llm=rows_to_llm, language_rule=rule)
+    if tools:
+        prompt = f"{prompt}\n\n{tools}"
     return f"{prompt}\n\n{context}" if context else prompt
 
 

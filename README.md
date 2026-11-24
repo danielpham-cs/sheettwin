@@ -13,8 +13,10 @@ local one, no data leaves the machine.
 
 > **Status: proof of concept (v0.1).** SheetIR parses, structures and audits a workbook, writes an audit report, and
 > answers questions about it with a grounded language model. It translates the workbook's formulas into a **Python
-> twin** and verifies it against Excel's saved values (V1) and an independent engine on random inputs (V2). The chat
-> does not use the twin yet, and there are no what-if tools in the UI. See [Status and roadmap](#status-and-roadmap).
+> twin** and verifies it against Excel's saved values (V1) and an independent engine on random inputs (V2). On that
+> twin it runs what-if scenarios, sensitivity and goal seek, records each in the project's history, and lets the chat
+> propose data corrections that the user confirms before they become the next version. These have an HTTP API and chat tools, but no screens in the
+> UI yet. See [Status and roadmap](#status-and-roadmap).
 
 ---
 
@@ -27,6 +29,7 @@ local one, no data leaves the machine.
 - [Chat with a language model](#chat-with-a-language-model)
 - [Audit report](#audit-report)
 - [Python twin and verification (V1 / V2)](#python-twin-and-verification-v1--v2)
+- [What-if, history and corrections](#what-if-history-and-corrections)
 - [Command line](#command-line)
 - [Architecture](#architecture)
 - [How the analysis works](#how-the-analysis-works)
@@ -548,6 +551,70 @@ defined names whose workbook-level definition is unreadable (1,229), and `NOW` /
 isolated mismatch differs from Excel by 5e-9 on a sum of large amounts: the file stores the values it reads with 15
 significant digits, and end to end (computed rather than read) the twin matches Excel exactly.
 
+## What-if, history and corrections
+
+The twin computes the workbook with some values changed, without touching the stored file (`sheetir/whatif.py`):
+
+- **Scenario**: set any constant cells (`{"Inputs!B1": 3, "Calc!B3": "12%"}`, values as typed in Excel); the result
+  lists each change (old -> new), every formula cell whose value changed (base, value, delta) and the key outputs.
+  The base is the twin's own result with no change, so a difference comes from the change alone. A formula cell
+  cannot be set: change what it reads, or propose a correction.
+- **Sensitivity**: each input the target reads (labelled inputs first, up to 30) moved ±10 % on its own (`step`), and
+  how far the target swings, largest first (a tornado chart's data), with elasticities.
+- **Goal seek**: the value of one input that makes a target equal a goal, as Excel's Goal Seek: secant steps from the
+  current value, then bisection in a bracket when those do not converge (step functions such as `COUNTIF`).
+
+Every computed cell carries how far it can be trusted: `verified`, `v1_passed` / `v2_passed`, `unchecked` (no twin
+check yet), `failed`, `depends_on_failed`, or `not_recomputed` — the cell is, or reads, a formula the twin could not
+translate, which keeps Excel's saved value and so does not follow the change. Sensitivity and goal seek refuse a
+`not_recomputed` target. On a workbook of 41,597 formulas a scenario takes 0.5 s, a sensitivity of 30 inputs 1 s.
+
+**History.** Each analysis is a record in the project's `history.db` (`data/projects/<id>/history.db`), cited as
+`S12` (analyses) or `C13` (corrections): which version of the file it used (workbook id and full SHA-256), every
+changed cell counted from the stored workbook, its parent record, what came out, a fingerprint of every computed value,
+who made it (the signed-in user, or the `by` name the client sends when users are not separated), from where (`user`,
+`agent`, `api`), the SheetIR version and the twin's check status. Records and their events (`replayed`, `exported`,
+`reapplied`, reviews) can only be added: triggers refuse any update or delete. Scenarios form a tree: continuing one
+(`parent`) adds changes to its own, `reset` drops some. Going back is choosing a record — it holds all its changes, so
+it can be replayed (`same` says whether today's twin gives every value it recorded), compared with another (on the same
+version both are computed again and every differing cell is listed), exported as a copy of the workbook with its values
+typed in (Excel recalculates when it opens it), or reapplied to a newer version of the file (each changed cell is
+checked first: still a value, same label).
+
+**Corrections.** Changing the data itself is proposed first — usually by the chat's model when the user asks for a
+change ("the rate should be 3 %, fix it"), or through the API (`edits`, as typed in Excel: values or formulas, with a
+reason; or taken from a scenario) — and shows the old and new contents and what it would do to the key outputs. The
+user confirms it (approve), and only then are the edits written into a copy of the workbook, which is stored as the
+file's next version (the earlier one stays). The model has a tool to propose but none to approve. A proposal made on a version that is no longer the newest is refused at approval.
+Bringing back an older version is a correction too (`revert`): every cell that differs gets the older contents, and once
+approved it becomes the newest version. The proposer can withdraw a proposal; a rejection needs a reason.
+
+The history is stored with the project, in the data directory of the user (`SHEETIR_USER_HEADER`): with users
+separated, only that user sees it (sharing a project between users is not built yet); without separation, everyone who
+uses the server shares it and names who they are.
+
+In the chat, questions such as "what if the rate were 3 %?" and requests to change the data are routed to the query
+agent with five more tools — `model_cells` (inputs and key outputs with their cells), `what_if`, `sensitivity`,
+`goal_seek`, which run on the twin and record each analysis in the history (source `agent`, the question as its note),
+and `propose_correction`, which records a pending correction (`C13`) for the user to approve. The answer cites the record
+(`S12`) like a query result, so its numbers are checked the same way, and the reply lists the records it made
+(`records`).
+
+| Method | Path | |
+|---|---|---|
+| `POST` | `/api/projects/{pid}/scenarios` | `{workbook, changes, parent?, reset?, outputs?, note?, save?, by?}`; `save: false` computes without recording |
+| `POST` | `/api/projects/{pid}/sensitivity` | `{workbook, target, inputs?, step?, parent?, note?, save?, by?}` |
+| `POST` | `/api/projects/{pid}/goal-seek` | `{workbook, target, goal, changing, low?, high?, parent?, note?, save?, by?}`; the record's changes include the value found |
+| `GET` | `/api/projects/{pid}/history?workbook=&kind=&status=` | Every record, newest first, with its status and events (`pending`, `approved`, … for corrections) |
+| `GET` | `/api/projects/{pid}/history/{ref}` | One record with its full result |
+| `GET` | `/api/projects/{pid}/history/compare?a=&b=` | Two analyses side by side |
+| `POST` | `/api/projects/{pid}/history/{ref}/replay` | Compute again: `same`, and today's result |
+| `POST` | `/api/projects/{pid}/history/{ref}/reapply` | `{to, force?}`: the same changes on another version of the file |
+| `GET` | `/api/projects/{pid}/history/{ref}/export` | A copy of the workbook (`.xlsx`) with the record's values typed in |
+| `POST` | `/api/projects/{pid}/corrections` | `{workbook, edits \| from_scenario, reason, by?}`: a pending proposal |
+| `POST` | `/api/projects/{pid}/corrections/revert` | `{workbook, to, reason, by?}`: propose bringing an older version back |
+| `POST` | `/api/projects/{pid}/history/{ref}/approve` \| `reject` \| `withdraw` | `{by?, note?}`; approving stores the next version (`applied_as`); rejecting needs a note; only the proposer withdraws |
+
 ---
 
 ## Command line
@@ -853,6 +920,8 @@ SheetTwin/
 │   ├── transpile.py   formula groups -> Python functions; the twin's constants, baselines and order; model.py
 │   ├── xl.py          the twin's runtime: Excel value rules, operators, worksheet functions, the Model
 │   ├── twin.py        V1 (against Excel's saved values) and V2 (against pycel), results kept in the database
+│   ├── whatif.py      scenarios, sensitivity and goal seek on the twin, with a trust status per cell
+│   ├── history.py     a project's append-only history of analyses and corrections (history.db)
 │   ├── llm.py         language model gateway: OpenAI-compatible endpoint, JSON-schema answers, .env settings
 │   ├── sketch.py      compact text sketch of a parsed workbook for the model
 │   ├── understand.py  grounded Q&A (routing, enforced query, number and language checks); table suggestions
@@ -862,12 +931,13 @@ SheetTwin/
 │   ├── detect/        TableSpec from the IR; language-model fallback for unsure tables (region encoding, validation)
 │   ├── clean/         headers, identifiers, types, units, total/subtotal/note rows -> one clean table
 │   ├── catalog/       DuckDB store, families, relations, cards, search index, CatalogHandle
-│   ├── agent/         query agent: protocol, SQL guard, tools and hints, prompts, loop, provenance
+│   ├── agent/         query agent: protocol, SQL guard, tools and hints, what-if tools, prompts, loop, provenance
 │   ├── cli.py         sample | build | trace | sql | twin | serve
 │   └── web/
 │       ├── app.py             FastAPI backend
 │       ├── chat.py            rule-based chat answers (no model, or model failed; cell cards)
 │       ├── provenance.py      which upload produced which result: versions, aliases, diffs
+│       ├── history_api.py     what-if, history and corrections endpoints
 │       ├── graph.py           dependency graphs for drawing (overview, cell trace)
 │       ├── charts.py          statistics and table rows for the charts view
 │       └── static/
@@ -893,6 +963,7 @@ SheetTwin/
     ├── test_agent.py  SQL guard, tools and hints, charts, the loop's checks, provenance
     ├── test_recalc.py, test_eval.py  formula evaluator against Excel's stored results; generator and scoring
     ├── test_twin.py  Python twin: Excel value rules, translation, V1 pass / mismatch / no baseline, V2 with pycel and a planted bug, module, CLI, API
+    ├── test_whatif.py  scenarios, trust statuses, sensitivity, goal seek, compare; append-only history and reviews; API (continue, replay, export, reapply, corrections, revert); agent tools (what-if, proposing a correction the user approves)
     └── conftest.py  turns the language model off in every test
 ```
 
@@ -1015,10 +1086,10 @@ pipeline on all 737 sheets with 5-fold cross-validation. That is not directly co
 | SheetTwin artifact | Status |
 |---|---|
 | A5 Audit report | **Partial.** Rule-based findings in a downloadable report (HTML printable to PDF, Markdown; Chinese and English). No Excel or Word format, and no written summary of the business impact |
-| A3 Interactive twin web app | **Partial.** Structure browser only; no what-if sliders or recalculation |
-| A1 Verified Python model | **Partial.** Formula groups translated to Python and verified: V1 against Excel's saved values, V2 against pycel on random scenarios (`sheetir twin`). Not yet used by the chat or the UI, and not vectorized with NumPy (one function per group, run cell by cell) |
+| A3 Interactive twin web app | **Partial.** Structure browser; what-if, sensitivity, goal seek, history and corrections have an API but no screens yet |
+| A1 Verified Python model | **Partial.** Formula groups translated to Python and verified: V1 against Excel's saved values, V2 against pycel on random scenarios (`sheetir twin`). Used by the what-if engine and its chat tools; not shown in the UI yet, and not vectorized with NumPy (one function per group, run cell by cell) |
 | A2 Plain-language specification | Not started |
-| A4 Grounded Q&A analyst | **Partial.** Data questions answered by a query agent over a catalog of clean tables (families of monthly sheets, units, join keys), with guarded SQL, checked numbers, sources and charts; structure and issue questions from the IR. Evaluated on synthetic workbooks only. No scenario tools (`run_scenario`, sensitivity, goal seek), which need the twin engine |
+| A4 Grounded Q&A analyst | **Partial.** Data questions answered by a query agent over a catalog of clean tables (families of monthly sheets, units, join keys), with guarded SQL, checked numbers, sources and charts; structure and issue questions from the IR. Evaluated on synthetic workbooks only. What-if questions go to the twin's tools (`what_if`, `sensitivity`, `goal_seek`), each recorded in the project's history |
 
 Next steps, in order:
 
@@ -1026,7 +1097,9 @@ Next steps, in order:
 2. ~~L2 differential testing against an independent engine (`pycel`), with input domains taken from data validation and observed values.~~ Done (V2).
 3. **Twin in the product**: show V1 / V2 per group in the web UI, and let the chat answer computed values (prices, margins) from verified groups only.
 4. **LLM naming** (Cartographer): propose names for groups, fields and parameters from the packaged context, constrained by a JSON schema. Table suggestions (`understand.suggest_tables`) are written but not yet offered in the UI.
-5. **Scenario tools** for the Q&A analyst (`run_scenario`, sensitivity, goal seek), on the verified twin.
+5. ~~**Scenario tools** for the Q&A analyst (`run_scenario`, sensitivity, goal seek), on the verified twin.~~ Done
+   (`sheetir/whatif.py`, chat tools, project history, corrections proposed by the chat and confirmed by the user). Next: screens for
+   them, and sharing a project's history between separated users.
 6. **Storage**: content-addressed version history, a catalog across workbooks, encryption at rest.
 
 ### Known limitations
@@ -1047,6 +1120,11 @@ Next steps, in order:
   untranslated every function outside `sheetir.xl.FUNCTIONS`; V1 catches a workbook where the first two matter. V2 needs
   pycel, whose last release uses `ast` features removed in Python 3.14, so V2 runs on Python 3.11–3.13 only. V2 was
   measured only on workbooks of up to 20,000 formulas.
+- What-if results are as good as the twin: cells marked `not_recomputed` keep Excel's saved values. A change that
+  reaches a formula only through `INDIRECT` / `OFFSET` is not seen at all (SheetIR cannot trace those references), so
+  the scenario then warns in general terms only. Exports and corrections need an `.xlsx` / `.xlsm` source. The `by`
+  name is not checked against anything when users are not separated. The direct edit endpoint
+  (`POST /api/workbooks/{id}/edits`) still makes a new version without a proposal.
 - A `.xls` file is read with xlrd, which cannot read formulas: its formulas are lost, so the twin has nothing to
   translate. Convert it to `.xlsx` first (Excel, or LibreOffice: `soffice --headless --convert-to xlsx file.xls`).
 - Heuristics have been tested only on the synthetic sample and small fixtures, not on real-world workbooks yet.

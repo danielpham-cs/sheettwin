@@ -63,15 +63,17 @@ class _Answer(BaseModel):
 
 
 def answer(question: str, catalog, llm, settings: Settings | None = None, lang: str = "en",
-           on_step: Callable[[Step], None] | None = None, context: str = "") -> AgentResult:
+           on_step: Callable[[Step], None] | None = None, context: str = "", whatif=None) -> AgentResult:
     """`context`: the project's instructions and documents, given after the rules. A number the answer takes from them
-    counts as grounded, as one from the question does."""
+    counts as grounded, as one from the question does. `whatif`: the what-if tools (sheetir.agent.whatif_tools),
+    whose results are cited like query results."""
     s = settings or get_settings()
     asked = f"{question}\n{context}" if context else question  # what the answer's numbers may come from, besides results
     t_start = time.perf_counter()
     lang = question_language(question, lang)
-    tools = Toolbox(catalog, s)
-    messages = [{"role": "system", "content": system_prompt(catalog.summary(), lang, s.agent.max_rows_to_llm, context)},
+    tools = Toolbox(catalog, s, whatif)
+    messages = [{"role": "system", "content": system_prompt(catalog.summary(), lang, s.agent.max_rows_to_llm, context,
+                                                            whatif.prompt() if whatif is not None else "")},
                 {"role": "user", "content": f"Question: {question}"}]
     steps: list[Step] = []
     corrected = False
@@ -108,7 +110,7 @@ def answer(question: str, catalog, llm, settings: Settings | None = None, lang: 
                 break
             result = tools.dispatch(action.tool, action.args)
             display = dict(result)
-            if action.tool == "run_sql" and "result_id" in result:
+            if "result_id" in result and "rows" in result:
                 display["rows"] = result["rows"][:10]
             steps.append(Step(n=n, thought=action.thought, tool=action.tool, args=jsonable(action.args),
                               result=jsonable(display), seconds=round(time.perf_counter() - t0, 2)))

@@ -39,9 +39,11 @@ from pydantic import BaseModel
 from .. import __version__, fixes
 from ..agent.loop import answer as agent_answer
 from ..agent.tools import jsonable
+from ..agent.whatif_tools import WhatIfTools
 from ..build import build_ir
 from ..catalog.store import CatalogHandle, build_catalog
 from ..config import is_local_url
+from ..history import History
 from ..convert import SUFFIXES
 from ..llm import get_llm, llm_status as _llm_settings_status
 from ..loader import WorkbookError
@@ -55,6 +57,7 @@ from ..catalog.project import ProjectCatalog
 from . import graph, knowledge, projects, provenance, users
 from .basepath import BasePathMiddleware
 from .charts import charts
+from .history_api import router as history_router, who as history_who
 from .chat import answer, find_cells
 
 STATIC = Path(__file__).parent / "static"
@@ -787,11 +790,14 @@ def _only_cells(con: sqlite3.Connection, message: str) -> bool:
 
 
 ROUTE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["route"],
-                "properties": {"route": {"type": "string", "enum": ["data", "structure", "issues"]}}}
+                "properties": {"route": {"type": "string", "enum": ["data", "what_if", "structure", "issues"]}}}
 ROUTE_SYSTEM = """Classify a question about an Excel workbook.
 - data: about the values in its tables: lookups, counts, totals, averages, comparisons, rankings, trends, periods,
   or a request to chart or visualize them.
 - structure: what the workbook is or does, its sheets, columns, formulas, how a cell is calculated, parameters.
+- what_if: what would happen to results if some values changed, how sensitive a result is to its inputs, or what
+  value an input needs for a result to reach a target ("what if the rate were 3%", "what price gives a 20% margin").
+  Also a request to change or correct the stored data ("change B3 to 120", "the rate should be 3%, fix it").
 - issues: errors, risks, problems or warnings found in the workbook.
 Return JSON {"route": ...}."""
 
@@ -804,17 +810,33 @@ def _route(question: str, llm, h: CatalogHandle) -> str:
         return "data"
 
 
-def _agent_reply(question: str, catalog, llm, lang: str, on_step, context: str = "") -> dict:
-    r = agent_answer(question, catalog, llm, lang=lang, on_step=on_step, context=context)
-    last_sql = r.results[-1]["sql"] if r.results else None
-    return jsonable({
+def _whatif_tools(pid: str | None, wids: list[str], question: str) -> WhatIfTools | None:
+    """The agent's what-if tools over the parsed workbooks `wids` (the one in view first), recording in the history
+    of project `pid` (by default the first project that lists the first workbook, else "default")."""
+    books = []
+    for wid in dict.fromkeys(wids):
+        db = data_dir() / wid / "ir.db"
+        if _ID_RE.match(wid) and db.exists():
+            books.append((wid, provenance.read(db.parent)["name"], db))
+    if not books:
+        return None
+    if pid is None:
+        pid = next(iter(projects.holders(data_dir(), books[0][0])), projects.DEFAULT)
+    return WhatIfTools(books, History(projects.folder(data_dir(), pid)), history_who(None), question)
+
+
+def _agent_reply(question: str, catalog, llm, lang: str, on_step, context: str = "", whatif=None) -> dict:
+    r = agent_answer(question, catalog, llm, lang=lang, on_step=on_step, context=context, whatif=whatif)
+    last_sql = next((x["sql"] for x in reversed(r.results) if x.get("sql")), None)
+    return jsonable({"records": whatif.records if whatif is not None else [],
         "reply": r.answer, "cells": [], "source": "agent", "model": r.model, "route": "data", "sql": last_sql,
         "grounded": r.grounded, "ungrounded": r.ungrounded, "steps": [s.model_dump() for s in r.steps],
         "results": [{**x, "rows": x["rows"][:50]} for x in r.results], "chart": r.chart,
         "provenance": r.provenance, "stopped": r.stopped, "seconds": r.seconds})
 
 
-def _chat(wid: str, req: ChatRequest, on_step=None, route: str | None = None, context: str = "") -> dict:
+def _chat(wid: str, req: ChatRequest, on_step=None, route: str | None = None, context: str = "",
+          pid: str | None = None) -> dict:
     """Bare cell ids get the rule-based cell card; with no model, the rules answer. With a model, questions about the
     data go to the agent over the catalog (sheetir.agent), questions about structure and issues to the IR-grounded
     Q&A (sheetir.understand.ask). If the model path fails, the rules answer and `fallback` says why. `route`: the
@@ -827,8 +849,9 @@ def _chat(wid: str, req: ChatRequest, on_step=None, route: str | None = None, co
         h = _catalog(wid)
         if route is None:
             route = _route(req.message, llm, h) if h is not None and h.cards else "ir"
-        if route == "data" and h is not None and h.cards:
-            return _agent_reply(req.message, h, llm, req.lang, on_step, context)
+        if route in ("data", "what_if") and h is not None and h.cards:
+            return _agent_reply(req.message, h, llm, req.lang, on_step, context,
+                                _whatif_tools(pid, [wid], req.message))
         r = ask(con, req.message, llm, req.lang, project_context=context)
     except Exception as e:  # any failure of the model path: the user still gets an answer, and the reason
         log.exception("LLM chat failed; answering with the rules")
@@ -896,7 +919,7 @@ def _project_answer(pid: str, req: ProjectChatRequest, on_step, context: str) ->
     if len(members) <= 1 or llm is None:
         if focus is None:
             raise HTTPException(400, "this project has no parsed workbook to answer from")
-        return {**_chat(focus, req, on_step, context=context), "workbook": focus}
+        return {**_chat(focus, req, on_step, context=context, pid=pid), "workbook": focus}
     if focus is not None:
         con = _connect(focus)
         try:
@@ -907,15 +930,16 @@ def _project_answer(pid: str, req: ProjectChatRequest, on_step, context: str) ->
     cat = ProjectCatalog(members)
     try:
         route = _route(req.message, llm, cat)
-        if route == "data" or focus is None:
-            return _agent_reply(req.message, cat, llm, req.lang, on_step, context)
+        if route in ("data", "what_if") or focus is None:
+            wids = ([focus] if focus else []) + [m[0] for m in members]
+            return _agent_reply(req.message, cat, llm, req.lang, on_step, context, _whatif_tools(pid, wids, req.message))
     except Exception as e:  # noqa: BLE001 - as in _chat: the file in view still gets an answer, and the reason
         log.exception("project agent failed; answering about the workbook in view")
         if focus is None:
             raise
         return {**_chat(focus, req, on_step, route="ir", context=context), "workbook": focus,
                 "fallback": f"{type(e).__name__}: {e}"[:300]}
-    return {**_chat(focus, req, on_step, route=route, context=context), "workbook": focus}
+    return {**_chat(focus, req, on_step, route=route, context=context, pid=pid), "workbook": focus}
 
 
 # ---- project knowledge: instructions and documents --------------------------------------------------------------------
@@ -1119,6 +1143,9 @@ def download_export(wid: str, name: str, lang: str = "zh", inline: bool = False)
         return FileResponse(src, filename=src.name)
     raise HTTPException(404, "no such export")
 
+
+# The twin compute engine and the project history (what-if, sensitivity, goal seek, corrections): history_api.py.
+app.include_router(history_router)
 
 # Registered last so the API routes above take precedence over the static mount.
 if (CHAT_UI / "index.html").exists():
