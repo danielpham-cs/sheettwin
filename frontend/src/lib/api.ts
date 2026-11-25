@@ -358,10 +358,11 @@ export type GoalSeekResult = {
   trust: TrustSummary;
 };
 
-export type RecordKind = "scenario" | "sensitivity" | "goal_seek" | "correction" | "revert";
+export type RecordKind = "scenario" | "sensitivity" | "goal_seek" | "correction" | "revert" | "edit";
 export type RecordStatus = "recorded" | "pending" | "approved" | "rejected" | "withdrawn";
 export type HistoryEvent = { action: string; by: string; at: string; note: string | null; data: Record<string, unknown> | null };
-/** One analysis (S12) or correction (C13) in a project's history. A correction's `changes` are cell contents as typed
+/** One analysis (S12) or change (C13: a correction, a revert, or an edit made directly in the Issues page) in a
+ * project's history. A correction's `changes` are cell contents as typed
  * in Excel; an analysis's are the values it set. */
 export type HistoryRecord = {
   id: number; ref: string; kind: RecordKind; status: RecordStatus;
@@ -379,10 +380,26 @@ export type CompareResult = {
   a: Pick<HistoryRecord, "ref" | "kind" | "workbook" | "note" | "author" | "created">;
   b: Pick<HistoryRecord, "ref" | "kind" | "workbook" | "note" | "author" | "created">;
   same_workbook: boolean;
-  inputs: { cell: string; label?: string | null; a: unknown; b: unknown }[];
+  inputs: { cell: string; label?: string | null; a: unknown; b: unknown; delta?: number | null }[];
   cells: { cell: string; label: string | null; a: unknown; b: unknown; delta?: number | null; status?: TrustStatus }[];
   n_cells: number; truncated: boolean; note?: string;
+  n_inputs?: number; sheets_added?: string[]; sheets_removed?: string[]; // version diffs only
 };
+/** One version of a file: the history records that made it, and what changed from the version before. */
+export type VersionInfo = {
+  id: string; name: string; version: number; versions: number;
+  first_uploaded: string | null; last_uploaded: string | null; uploads: number;
+  previous: { id: string; version: number } | null;
+  made_by: (Pick<HistoryRecord, "ref" | "kind" | "author" | "source" | "created" | "params" | "events"> & { n_changes: number })[];
+  diff: CompareResult | null;
+  no_diff: "first" | "gone" | "failed" | null;
+};
+
+/** Where the name typed in the Twin view is kept (who acts, when users are not separated). */
+export const ACTOR_KEY = "sheettwin.by";
+function actor(): string | undefined {
+  try { return localStorage.getItem(ACTOR_KEY)?.trim() || undefined; } catch { return undefined; }
+}
 
 /** An API error; `kind` is set when the backend names the problem (e.g. "unsupported_type"). */
 export class ApiError extends Error {
@@ -465,10 +482,10 @@ export const api = {
   sql: (id: string, query: string) => call<SqlResult>(`/api/workbooks/${id}/sql`, json({ query })),
   fixes: (id: string) => call<FixSuggestions>(`/api/workbooks/${id}/fixes`),
   applyFixes: (id: string, cells: string[]) =>
-    call<IngestResult & { applied: string[] }>(`/api/workbooks/${id}/fixes/apply`, json({ cells })),
+    call<IngestResult & { applied: string[] }>(`/api/workbooks/${id}/fixes/apply`, json({ cells, by: actor() })),
   resolve: (id: string) => call<ResolveData>(`/api/workbooks/${id}/resolve`),
   editCells: (id: string, edits: Record<string, string>) =>
-    call<IngestResult & { edited: string[] }>(`/api/workbooks/${id}/edits`, json({ edits })),
+    call<IngestResult & { edited: string[] }>(`/api/workbooks/${id}/edits`, json({ edits, by: actor() })),
   ignoreIssue: (id: string, key: IssueKey, note?: string) =>
     call<{ status: ParseStatus }>(`/api/workbooks/${id}/ignored`, json({ ...key, note })),
   unignoreIssue: (id: string, key: IssueKey) => call<{ status: ParseStatus }>(`/api/workbooks/${id}/ignored/remove`, json(key)),
@@ -505,6 +522,7 @@ export const api = {
       `/api/projects/${pid}/history/${ref}/reapply`, json({ to, force, by })),
   /** An approved correction: the cells it changed and the results that differ between the two versions. */
   correctionDiff: (pid: string, ref: string) => call<CompareResult>(`/api/projects/${pid}/history/${ref}/diff`),
+  versionInfo: (pid: string, wid: string) => call<VersionInfo>(`/api/projects/${pid}/versions/${wid}`),
   recordExportUrl: (pid: string, ref: string) => `${BASE}/api/projects/${pid}/history/${ref}/export`,
   propose: (pid: string, body: { workbook: string; edits?: Record<string, string>; from_scenario?: string; reason: string; by?: string }) =>
     call<HistoryRecord>(`/api/projects/${pid}/corrections`, json(body)),

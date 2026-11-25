@@ -57,7 +57,7 @@ from ..catalog.project import ProjectCatalog
 from . import graph, knowledge, projects, provenance, users
 from .basepath import BasePathMiddleware
 from .charts import charts
-from .history_api import router as history_router, who as history_who
+from .history_api import record_edit, router as history_router, who as history_who
 from .chat import answer, find_cells
 
 STATIC = Path(__file__).parent / "static"
@@ -481,6 +481,7 @@ def fix_suggestions(wid: str):
 
 class ApplyFixes(BaseModel):
     cells: list[str]
+    by: str | None = None  # who, when users are not separated (recorded in the project history)
 
 
 @app.post("/api/workbooks/{wid}/fixes/apply")
@@ -501,6 +502,7 @@ def apply_fixes(wid: str, req: ApplyFixes):
     data = fixes.apply(src, edits)
     res = _ingest(data, provenance.read(folder)["name"])
     projects.follow(data_dir(), wid, res["id"])
+    record_edit(wid, res["id"], res["duplicate"], edits, "fix", req.by)
     return {**res, "applied": sorted(edits)}
 
 
@@ -515,6 +517,7 @@ MAX_EDITS = 2000
 
 class Edits(BaseModel):
     edits: dict[str, str]  # cell id -> contents as typed in Excel ("=..." formula, "" to clear)
+    by: str | None = None  # who, when users are not separated (recorded in the project history)
 
 
 @app.post("/api/workbooks/{wid}/edits")
@@ -534,6 +537,7 @@ def edit_cells(wid: str, req: Edits):
         raise HTTPException(400, str(exc)) from exc
     res = _ingest(data, provenance.read(folder)["name"])
     projects.follow(data_dir(), wid, res["id"])
+    record_edit(wid, res["id"], res["duplicate"], req.edits, "edit", req.by)
     return {**res, "edited": sorted(req.edits)}
 
 

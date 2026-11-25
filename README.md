@@ -588,6 +588,9 @@ user confirms it (approve), and only then are the edits written into a copy of t
 file's next version (the earlier one stays). The model has a tool to propose but none to approve. A proposal made on a version that is no longer the newest is refused at approval.
 Bringing back an older version is a correction too (`revert`): every cell that differs gets the older contents, and once
 approved it becomes the newest version. The proposer can withdraw a proposal; a rejection needs a reason.
+A change made directly in the Issues page (typed contents, or applied fixes) is recorded too, as an `edit`: already
+applied, with who made it, the old and new contents and the version it became. Versions made before edits were recorded
+have no record, but every version can still be compared with the one before it.
 
 The history is stored with the project, in the data directory of the user (`SHEETIR_USER_HEADER`): with users
 separated, only that user sees it (sharing a project between users is not built yet); without separation, everyone who
@@ -598,7 +601,9 @@ In the UI, the **Twin** view (分身, in the left rail; a badge counts the corre
 **What-if** (type new values next to the inputs, try them, save them as a scenario, or continue one from the history),
 **Sensitivity** (a tornado of how far a result swings), **Goal seek**, and **History & corrections** (every record with
 its changes, results and timeline; recompute, export, compare two, continue, apply to the current version; approve,
-reject or withdraw a correction; and the file's versions, with a proposal to go back to any of them). Who acts is the
+reject or withdraw a correction; download a correction's corrected file and compare it with the version before it; and
+the file's versions: each opens how it came about — the records that made it — and what changed from the version before,
+with a proposal to go back to it). Actions that do not apply to a record are shown disabled, with the reason. Who acts is the
 signed-in account, or the name typed at the top of the view (kept in the browser). A chat answer that made a record
 shows a link to it.
 
@@ -621,6 +626,8 @@ and `propose_correction`, which records a pending correction (`C13`) for the use
 | `POST` | `/api/projects/{pid}/history/{ref}/replay` | Compute again: `same`, and today's result |
 | `POST` | `/api/projects/{pid}/history/{ref}/reapply` | `{to, force?}`: the same changes on another version of the file |
 | `GET` | `/api/projects/{pid}/history/{ref}/export` | A copy of the workbook (`.xlsx`) with the record's values typed in |
+| `GET` | `/api/projects/{pid}/history/{ref}/diff` | An applied change: the cells whose contents changed and the results that differ, version before against version after |
+| `GET` | `/api/projects/{pid}/versions/{wid}` | One version: the records that made it (`made_by`) and what changed from the previous version (`diff`) |
 | `POST` | `/api/projects/{pid}/corrections` | `{workbook, edits \| from_scenario, reason, by?}`: a pending proposal |
 | `POST` | `/api/projects/{pid}/corrections/revert` | `{workbook, to, reason, by?}`: propose bringing an older version back |
 | `POST` | `/api/projects/{pid}/history/{ref}/approve` \| `reject` \| `withdraw` | `{by?, note?}`; approving stores the next version (`applied_as`); rejecting needs a note; only the proposer withdraws |

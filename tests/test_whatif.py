@@ -252,10 +252,32 @@ def test_api_correction_diff_and_export(api):
     client.post(f"{base}/history/{c['ref']}/approve", json={"by": "ann"})
     d = client.get(f"{base}/history/{c['ref']}/diff").json()
     assert (d["a"]["ref"], d["b"]["ref"]) == ("v1", "v2")
-    assert d["inputs"] == [{"cell": "Inputs!B1", "label": "Rate", "a": "2", "b": "3"}]
+    assert d["inputs"] == [{"cell": "Inputs!B1", "label": "Rate", "a": "2", "b": "3", "delta": 1.0}]
     got = {x["cell"]: (x["a"], x["b"], x["delta"]) for x in d["cells"]}
     assert got["Calc!D5"] == (36.5, 54.75, 18.25)
     assert client.get(f"{base}/history/S9/diff").status_code == 404
+
+
+def test_api_issues_page_edit_is_recorded_and_versions_explain_themselves(api):
+    client, wid = api
+    base = "/api/projects/default"
+    v2 = client.post(f"/api/workbooks/{wid}/edits", json={"edits": {"Inputs!B1": "4"}, "by": "kim"}).json()["id"]
+    [rec] = client.get(f"{base}/history").json()["records"]
+    assert (rec["kind"], rec["ref"], rec["status"], rec["author"]) == ("edit", "C1", "approved", "kim")
+    assert rec["applied_as"] == v2 and rec["changes"] == {"Inputs!B1": "4"}
+    assert rec["params"] == {"via": "edit", "old": {"Inputs!B1": "2"}}
+    assert [e["action"] for e in rec["events"]] == ["approved"]  # made directly: nothing to review
+    assert client.post(f"{base}/history/C1/approve", json={"by": "kim"}).status_code == 409
+    d = client.get(f"{base}/history/C1/diff").json()
+    assert d["inputs"] == [{"cell": "Inputs!B1", "label": "Rate", "a": "2", "b": "4", "delta": 2.0}]
+
+    info = client.get(f"{base}/versions/{v2}").json()
+    assert (info["version"], info["previous"]["id"]) == (2, wid)
+    assert [m["ref"] for m in info["made_by"]] == ["C1"] and info["made_by"][0]["params"]["via"] == "edit"
+    assert info["diff"]["inputs"][0]["b"] == "4" and info["diff"]["n_inputs"] == 1
+    first = client.get(f"{base}/versions/{wid}").json()
+    assert first["made_by"] == [] and first["diff"] is None and first["no_diff"] == "first"
+    assert client.get(f"{base}/versions/nope").status_code == 404
 
 
 def test_api_scenario_reapplied_on_a_new_version(api):

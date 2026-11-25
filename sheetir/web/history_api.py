@@ -279,48 +279,116 @@ def _rerun(rec: dict) -> dict:
     return eng.goal_seek(p["target"], p["goal"], p["changing"], start, p.get("low"), p.get("high"))
 
 
+def _number_delta(a, b) -> float | None:
+    """b - a when both contents are plain numbers (not formulas), else None."""
+    try:
+        if isinstance(a, str) and a.startswith("=") or isinstance(b, str) and b.startswith("="):
+            return None
+        return show(float(b) - float(a))
+    except (TypeError, ValueError):
+        return None
+
+
+def _version_diff(old_id: str, new_id: str, author: str | None = None, created: str | None = None) -> dict:
+    """What changed from version `old_id` to version `new_id` of a file: the cells whose contents differ, and every
+    formula cell whose value differs (each computed by its own twin; the key outputs first). In the shape of `compare`,
+    with the two versions as `a` and `b`."""
+    web = _web()
+    versions = {e["id"]: e["version"] for e in provenance.catalog(web.data_dir())}
+    side = lambda wid: {"ref": f"v{versions.get(wid, '?')}", "kind": "version", "workbook": wid,  # noqa: E731
+                        "note": None, "author": author, "created": created}
+    old_db, new_db = web._db_path(old_id), web._db_path(new_id)
+    contents = provenance.diff(new_db, old_db)
+    e_old, e_new = Engine.cached(old_db), Engine.cached(new_db)
+    inputs = []
+    for row in contents["cells"]:
+        label = None
+        try:
+            label = e_new.label(e_new.key(row["cell_id"]))
+        except WhatIfError:
+            pass
+        inputs.append({"cell": row["cell_id"], "label": label, "a": row["old"], "b": row["new"],
+                       "delta": _number_delta(row["old"], row["new"])})
+    base_old, base_new = e_old.base(), e_new.base()
+    diff = [ck for ck in e_new.twin.order if ck in base_old and not xl.same(base_old[ck], base_new.get(ck))]
+    diff.sort(key=lambda ck: e_new.twin.roles.get(ck) != "output")
+    cells = []
+    for ck in diff[:MAX_LISTED]:
+        a, b = base_old[ck], base_new.get(ck)
+        d = show(b - a) if isinstance(a, float) and isinstance(b, float) else None
+        cells.append({"cell": e_new.cell_id(ck), "label": e_new.label(ck), "a": show(a), "b": show(b), "delta": d,
+                      "status": e_new.status.get(ck)})
+    return {"a": side(old_id), "b": side(new_id), "same_workbook": False, "inputs": inputs, "cells": cells,
+            "n_cells": len(diff), "n_inputs": sum(contents["counts"].values()),
+            "truncated": len(diff) > MAX_LISTED or contents["truncated"],
+            "sheets_added": contents["sheets_added"], "sheets_removed": contents["sheets_removed"]}
+
+
 @router.get("/api/projects/{pid}/history/{ref}/diff")
 def correction_diff(pid: str, ref: str):
-    """What an approved correction changed: the cells whose contents differ between the version it was made on and the
-    version it became, and every formula cell whose value differs between the two (each computed by its own twin; the
-    key outputs first). In the shape of `compare`, with the two versions as `a` and `b`."""
+    """What an applied change (an approved correction or revert, or an edit) did: the version it was made on against
+    the version it became (see _version_diff)."""
     with _errors():
         rec = _record(_history(pid), ref)
         if rec["kind"] not in CHANGES:
             raise HTTPException(400, f"{rec['ref']} is an analysis: compare it with another record instead")
         if rec["status"] != "approved" or not rec["applied_as"]:
             raise HTTPException(409, f"{rec['ref']} is {rec['status']}: only an approved correction made a new version")
-        web = _web()
-        ids = web._workbook_ids()
-        old_id, new_id = rec["workbook"], rec["applied_as"]
-        for wid in (old_id, new_id):
+        ids = _web()._workbook_ids()
+        for wid in (rec["workbook"], rec["applied_as"]):
             if wid not in ids:
                 raise HTTPException(409, f"workbook {wid} is no longer stored")
-        versions = {e["id"]: e["version"] for e in provenance.catalog(web.data_dir())}
-        side = lambda wid: {"ref": f"v{versions.get(wid, '?')}", "kind": "version", "workbook": wid,  # noqa: E731
-                            "note": None, "author": rec["author"], "created": rec["created"]}
-        old_db, new_db = web._db_path(old_id), web._db_path(new_id)
-        contents = provenance.diff(new_db, old_db)
-        e_old, e_new = Engine.cached(old_db), Engine.cached(new_db)
-        inputs = []
-        for row in contents["cells"]:
-            label = None
-            try:
-                label = e_new.label(e_new.key(row["cell_id"]))
-            except WhatIfError:
-                pass
-            inputs.append({"cell": row["cell_id"], "label": label, "a": row["old"], "b": row["new"]})
-        base_old, base_new = e_old.base(), e_new.base()
-        diff = [ck for ck in e_new.twin.order if ck in base_old and not xl.same(base_old[ck], base_new.get(ck))]
-        diff.sort(key=lambda ck: e_new.twin.roles.get(ck) != "output")
-        cells = []
-        for ck in diff[:MAX_LISTED]:
-            a, b = base_old[ck], base_new.get(ck)
-            d = show(b - a) if isinstance(a, float) and isinstance(b, float) else None
-            cells.append({"cell": e_new.cell_id(ck), "label": e_new.label(ck), "a": show(a), "b": show(b), "delta": d,
-                          "status": e_new.status.get(ck)})
-        return {"a": side(old_id), "b": side(new_id), "same_workbook": False, "inputs": inputs, "cells": cells,
-                "n_cells": len(diff), "truncated": len(diff) > MAX_LISTED or contents["truncated"]}
+        return _version_diff(rec["workbook"], rec["applied_as"], rec["author"], rec["created"])
+
+
+@router.get("/api/projects/{pid}/versions/{wid}")
+def version_info(pid: str, wid: str):
+    """One version of a file: how it came to be (the history records that made it: approved corrections, reverts and
+    direct edits; none for an uploaded file or a version edited before edits were recorded) and what changed from the
+    version before it (`diff`, None for the first version or when that one is gone or could not be parsed)."""
+    with _errors():
+        wb = _workbook(pid, wid)
+        web = _web()
+        entries = provenance.catalog(web.data_dir())
+        me = next(e for e in entries if e["id"] == wid)
+        prev = next((e for e in entries if e["id"] == me.get("previous")), None)
+        made_by = []
+        for r in _history(pid).list():
+            if r["kind"] in CHANGES and r["status"] == "approved" and r["applied_as"] == wid:
+                made_by.append({k: r[k] for k in ("ref", "kind", "author", "source", "created", "params", "events")}
+                               | {"n_changes": len(r["changes"] or {})})
+        made_by.reverse()  # oldest first
+        diff, why = None, None
+        if prev is None:
+            why = "first" if me["version"] == 1 else "gone"
+        elif prev["status"] == "failed":
+            why = "failed"
+        else:
+            diff = _version_diff(prev["id"], wid)
+        return {"id": wid, "name": wb["name"], "version": me["version"], "versions": me["versions"],
+                "first_uploaded": me["first_uploaded"], "last_uploaded": me["last_uploaded"], "uploads": me["uploads"],
+                "previous": {"id": prev["id"], "version": prev["version"]} if prev else None,
+                "made_by": made_by, "diff": diff, "no_diff": why}
+
+
+def record_edit(wid: str, new_id: str, duplicate: bool, edits: dict, via: str, by: str | None) -> None:
+    """Record a direct edit of workbook `wid` (from the Issues page: typed contents, or applied fixes) that became
+    version `new_id`, in the history of every project the workbook is in. The edit is already made: this only says
+    who made it, which cells changed and what they held before."""
+    web = _web()
+    data = web.data_dir()
+    folder = web._folder(wid)
+    rec = provenance.read(folder)
+    wb = {"id": wid, "name": rec["name"], "sha256": rec["sha256"]}
+    db = folder / "ir.db"
+    before = _contents(db) if db.exists() else {}
+    changes = {c: (t if isinstance(t, str) else as_typed(t)) for c, t in edits.items()}
+    params = {"via": via, "old": {c: before.get(c, "") for c in changes}}
+    author = who(by)
+    for p in projects.listing(data, web._workbook_ids()):
+        if wid in p["workbooks"]:
+            History(projects.folder(data, p["id"])).applied(
+                "edit", wb, author, "user", changes, params=params, data={"workbook": new_id, "duplicate": duplicate})
 
 
 class ByRequest(BaseModel):

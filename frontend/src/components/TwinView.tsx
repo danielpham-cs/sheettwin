@@ -2,13 +2,13 @@
 
 import {
   Bot, Check, ChevronDown, ChevronRight, CircleAlert, Download, FlaskConical, GitBranch, GitCompare, History, Loader2,
-  Play, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Target, Undo2, Waypoints, X,
+  Pencil, Play, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Target, Undo2, Waypoints, X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
-  api, type CompareResult, type CellChange, type GoalSeekResult, type HistoryRecord, type ModelCell, type ModelCells,
-  type ScenarioResult, type SensitivityResult, type TwinCheck, type Workbook,
+  ACTOR_KEY, api, type CompareResult, type CellChange, type GoalSeekResult, type HistoryRecord, type ModelCell, type ModelCells,
+  type ScenarioResult, type SensitivityResult, type TwinCheck, type VersionInfo, type Workbook,
 } from "@/lib/api";
 import { useDialogFocus } from "@/lib/dialog-focus";
 import { useI18n } from "@/lib/i18n";
@@ -40,7 +40,7 @@ type Props = {
 /** Where a what-if continues from: a recorded analysis and the changes it holds. */
 type Draft = { values: Record<string, string>; parent: HistoryRecord | null };
 
-const BY_KEY = "sheettwin.by";
+const BY_KEY = ACTOR_KEY;
 
 /** Who acts: the signed-in account, or the name typed here (kept in this browser). */
 function useActor() {
@@ -954,7 +954,8 @@ function HistoryTab({ pid, wid, versions, latest, by, openRef, onOpened, onOpenC
         )}
       </section>
 
-      <VersionsPanel pid={pid} versions={versions} latest={latest} by={by} onChanged={changed} onOpen={onNewVersion} />
+      <VersionsPanel pid={pid} wid={wid} versions={versions} latest={latest} by={by} onChanged={changed} onOpen={onNewVersion}
+        onOpenCell={onOpenCell} onOpenRecord={(ref) => { setOpen(ref); setOnlyFile(false); setKind(null); }} />
       <ComparePicker pid={pid} base={comparing} records={records} fileIds={fileIds} versionOf={versionOf}
         onClose={() => setComparing(null)} onOpenCell={onOpenCell} />
     </div>
@@ -972,11 +973,12 @@ function useSummary() {
     if (r.kind === "sensitivity") return r.note || m.sensitivity(String(p.target), Math.round(Number(p.step ?? 0) * 1000) / 10);
     if (r.kind === "goal_seek") return r.note || m.goal_seek(String(p.target), fmtValue(p.goal), String(p.changing));
     if (r.kind === "revert") return `${m.revert(String(p.to_name ?? p.to))}${p.reason ? ` — ${p.reason}` : ""}`;
+    if (r.kind === "edit") return m.edit(n, String(p.via ?? "edit"));
     return p.reason ? String(p.reason) : m.correction(n);
   };
 }
 
-const KIND_ICON = { scenario: FlaskConical, sensitivity: Waypoints, goal_seek: Target, correction: Check, revert: Undo2 } as const;
+const KIND_ICON = { scenario: FlaskConical, sensitivity: Waypoints, goal_seek: Target, correction: Check, revert: Undo2, edit: Pencil } as const;
 
 function RecordMeta({ rec, version }: { rec: HistoryRecord; version?: Workbook }) {
   const { t } = useI18n();
@@ -1013,7 +1015,7 @@ function RecordRow({ pid, rec, open, onToggle, version, versions, currentId, lat
           </span>
           <RecordMeta rec={rec} version={version} />
         </span>
-        {rec.status !== "recorded" && <Pill status={rec.status} label={h.states[rec.status]} title="" />}
+        {rec.status !== "recorded" && <Pill status={rec.status} label={h.states[rec.kind === "edit" ? "applied" : rec.status]} title="" />}
       </button>
       {open && (
         <RecordDetail pid={pid} rec={rec} currentId={currentId} latest={latest} versions={versions} by={by} onCompare={onCompare}
@@ -1080,6 +1082,7 @@ function RecordDetail({ pid, rec, currentId, latest, versions, by, onCompare, on
       {(reason || r.note) && (
         <p className="text-sm text-zinc-200">{reason ? <><span className="text-zinc-500">{h.reason}</span>{reason}</> : r.note}</p>
       )}
+      {r.kind === "edit" && <p className="text-sm text-zinc-300">{h.editNote(String(r.params?.via ?? "edit"))}</p>}
 
       {nChanges > 0 && (
         <div>
@@ -1120,7 +1123,7 @@ function RecordDetail({ pid, rec, currentId, latest, versions, by, onCompare, on
           <ol className="space-y-1 border-l border-white/10 pl-3">
             {r.events.map((e, i) => (
               <li key={i} className="text-zinc-400">
-                <span className="text-zinc-200">{h.actions[e.action] ?? e.action}</span> · {e.by} · {new Date(e.at).toLocaleString(t.locale, { dateStyle: "short", timeStyle: "short" })}
+                <span className="text-zinc-200">{h.actions[r.kind === "edit" && e.action === "approved" ? "edited" : e.action] ?? e.action}</span> · {e.by} · {new Date(e.at).toLocaleString(t.locale, { dateStyle: "short", timeStyle: "short" })}
                 {e.note && <span className="text-zinc-300"> — {e.note}</span>}
                 {e.action === "replayed" && e.data && <span className={e.data.same ? "text-emerald-300" : "text-amber-200"}> · {e.data.same ? h.replaySame : h.replayDiff}</span>}
               </li>
@@ -1319,13 +1322,16 @@ function CompareBody({ data, onOpenCell, inputsTitle }: { data: CompareResult; o
   );
 }
 
-/** The file's versions, newest first, with a way to propose bringing an older one back. */
-function VersionsPanel({ pid, versions, latest, by, onChanged, onOpen }: {
-  pid: string; versions: Workbook[]; latest?: Workbook; by?: string; onChanged: () => void; onOpen: (id: string) => Promise<void>;
+/** The file's versions, newest first: each opens what it holds (how it came about, what changed from the one before),
+ * with a way to propose bringing an older one back. */
+function VersionsPanel({ pid, wid, versions, latest, by, onChanged, onOpen, onOpenCell, onOpenRecord }: {
+  pid: string; wid: string; versions: Workbook[]; latest?: Workbook; by?: string; onChanged: () => void;
+  onOpen: (id: string) => Promise<void>; onOpenCell: (cell: string) => void; onOpenRecord: (ref: string) => void;
 }) {
   const { t } = useI18n();
   const h = t.twin.history;
   const [target, setTarget] = useState<Workbook | null>(null);
+  const [viewing, setViewing] = useState<Workbook | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const sorted = [...versions].sort((a, b) => b.version - a.version);
   return (
@@ -1333,20 +1339,34 @@ function VersionsPanel({ pid, versions, latest, by, onChanged, onOpen }: {
       <h3 className="flex items-center gap-1.5 text-sm font-medium text-zinc-200"><History className="size-4 text-blue-300" />{h.versions}</h3>
       <ul className="mt-3 space-y-1.5 text-xs">
         {sorted.map((v) => (
-          <li key={v.id} className="rounded-md bg-white/[0.02] px-2.5 py-2 ring-1 ring-white/[0.06]">
-            <div className="flex items-center gap-2">
-              <button onClick={() => onOpen(v.id)} className={`${btnLink} text-zinc-100`}>v{v.version}</button>
-              <span className="font-mono text-zinc-500">{v.id.slice(0, 7)}</span>
-              {v.id === latest?.id && <span className="ml-auto rounded bg-emerald-400/10 px-1.5 text-[11px] text-emerald-300 ring-1 ring-emerald-400/20">{h.currentVersion}</span>}
-            </div>
-            <p className="mt-0.5 text-zinc-500">{v.first_uploaded ? new Date(v.first_uploaded).toLocaleString(t.locale, { dateStyle: "short", timeStyle: "short" }) : ""}</p>
+          <li key={v.id} className="rounded-md bg-white/[0.02] ring-1 ring-white/[0.06] transition hover:bg-white/[0.04] hover:ring-white/15">
+            <button onClick={() => setViewing(v)} title={h.version.open} aria-label={`${h.version.open} v${v.version}`}
+              className={`group w-full rounded-md px-2.5 pb-1.5 pt-2 text-left ${focus}`}>
+              <span className="flex items-center gap-2">
+                <span className="font-medium text-zinc-100">v{v.version}</span>
+                <span className="font-mono text-zinc-500">{v.id.slice(0, 7)}</span>
+                {v.id === wid && v.id !== latest?.id && <span className="size-1.5 rounded-full bg-blue-400" title={h.version.alreadyOpen} />}
+                <span className="ml-auto flex items-center gap-1">
+                  {v.id === latest?.id && <span className="rounded bg-emerald-400/10 px-1.5 text-[11px] text-emerald-300 ring-1 ring-emerald-400/20">{h.currentVersion}</span>}
+                  <ChevronRight className="size-3.5 text-zinc-500 transition group-hover:translate-x-0.5 group-hover:text-zinc-200" />
+                </span>
+              </span>
+              <span className="mt-0.5 block text-zinc-500">{v.first_uploaded ? new Date(v.first_uploaded).toLocaleString(t.locale, { dateStyle: "short", timeStyle: "short" }) : ""}</span>
+            </button>
             {v.id !== latest?.id && (
-              <button onClick={() => { setTarget(v); setDone(null); }} className={`${btnGhost} mt-2 w-full py-1`}><Undo2 className="size-3.5" />{h.revertTo(v.version)}</button>
+              <div className="px-2.5 pb-2">
+                <button onClick={() => { setTarget(v); setDone(null); }} className={`${btnGhost} w-full py-1`}><Undo2 className="size-3.5" />{h.revertTo(v.version)}</button>
+              </div>
             )}
           </li>
         ))}
       </ul>
       {done && <p className="mt-2 rounded-md bg-amber-400/[0.07] px-2.5 py-1.5 text-xs text-amber-100 ring-1 ring-amber-300/20">{h.proposed(done)}</p>}
+      <VersionDetail pid={pid} version={viewing} wid={wid} latest={latest} onClose={() => setViewing(null)}
+        onOpen={(id) => { setViewing(null); void onOpen(id); }}
+        onRevert={(v) => { setViewing(null); setTarget(v); setDone(null); }}
+        onOpenRecord={(ref) => { setViewing(null); onOpenRecord(ref); }}
+        onOpenCell={(c) => { setViewing(null); onOpenCell(c); }} />
       <ConfirmDialog open={!!target} title={target ? h.revertTitle(target.version) : ""} confirm={h.propose}
         body={target && latest ? h.revertBody(target.version, latest.version) : null}
         note={{ placeholder: h.revertReason, required: true }} onClose={() => setTarget(null)}
@@ -1356,5 +1376,98 @@ function VersionsPanel({ pid, versions, latest, by, onChanged, onOpen }: {
           setDone(rec.ref); onChanged();
         }} />
     </aside>
+  );
+}
+
+/** One version in a dialog: the history records that made it (or that none did), and what changed from the version
+ * before it — the cells whose contents differ, then the results that differ. */
+function VersionDetail({ pid, version, wid, latest, onClose, onOpen, onRevert, onOpenRecord, onOpenCell }: {
+  pid: string; version: Workbook | null; wid: string; latest?: Workbook; onClose: () => void; onOpen: (id: string) => void;
+  onRevert: (v: Workbook) => void; onOpenRecord: (ref: string) => void; onOpenCell: (cell: string) => void;
+}) {
+  const { t } = useI18n();
+  const h = t.twin.history;
+  const vt = h.version;
+  const m = t.twin.summary;
+  const [loaded, setLoaded] = useState<{ id: string; info?: VersionInfo; error?: string } | null>(null);
+  const id = version?.id;
+  useEffect(() => {
+    if (!id) return;
+    let live = true;
+    api.versionInfo(pid, id).then((info) => live && setLoaded({ id, info }), (e) => live && setLoaded({ id, error: (e as Error).message }));
+    return () => { live = false; };
+  }, [pid, id]);
+  const mine = loaded && loaded.id === id ? loaded : null;
+  const info = mine?.info;
+  const when = (iso: string | null) => iso ? new Date(iso).toLocaleString(t.locale, { dateStyle: "short", timeStyle: "short" }) : "";
+  const label = (x: VersionInfo["made_by"][number]) => {
+    const p = x.params ?? {};
+    if (x.kind === "edit") return m.edit(x.n_changes, String(p.via ?? "edit"));
+    if (x.kind === "revert") return `${m.revert(String(p.to_name ?? p.to))}${p.reason ? ` — ${p.reason}` : ""}`;
+    return p.reason ? String(p.reason) : m.correction(x.n_changes);
+  };
+  const d = info?.diff;
+  const heading = "mb-1.5 text-[11px] font-medium text-zinc-500";
+  return (
+    <Modal open={!!version} wide onClose={onClose}
+      title={version ? <>{vt.title(version.version, version.id.slice(0, 7))}<span className="ml-2 font-normal text-zinc-500">{when(version.first_uploaded)}</span></> : ""}>
+      {version && (
+        <div className="space-y-5 text-xs">
+          <section>
+            <h4 className={heading}>{vt.origin}</h4>
+            {!info ? (
+              mine?.error ? <ErrorLine text={mine.error} /> : <Loader2 className="size-4 animate-spin text-zinc-500" />
+            ) : info.made_by.length > 0 ? (
+              <ul className="space-y-1.5">
+                {info.made_by.map((x) => {
+                  const Icon = KIND_ICON[x.kind] ?? History;
+                  return (
+                    <li key={x.ref} className="flex items-center gap-2.5 rounded-md bg-white/[0.03] px-3 py-2 ring-1 ring-white/[0.06]">
+                      <Icon className="size-4 shrink-0 text-blue-300" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-zinc-100">{label(x)}</span>
+                        <span className="block truncate text-[11px] text-zinc-500">
+                          {vt.madeBy(h.kinds[x.kind], x.ref, x.author, when(x.created))} · {vt.changes(x.n_changes)}
+                          {x.source === "agent" ? " · AI" : ""}
+                        </span>
+                      </span>
+                      <button onClick={() => onOpenRecord(x.ref)} className={`${btnGhost} shrink-0 py-1`}>{vt.showRecord}<ChevronRight className="size-3.5" /></button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-sm text-zinc-300">{info.version === 1 ? vt.first : vt.unknown}</p>
+            )}
+          </section>
+
+          {info && info.previous && (
+            <section>
+              <h4 className={heading}>{vt.vsPrev(info.previous.version)}</h4>
+              {d ? (
+                <div className="space-y-3">
+                  {!!d.sheets_added?.length && <p className="text-zinc-300">{vt.sheetsAdded(d.sheets_added.join(", "))}</p>}
+                  {!!d.sheets_removed?.length && <p className="text-zinc-300">{vt.sheetsRemoved(d.sheets_removed.join(", "))}</p>}
+                  {!d.inputs.length && !d.cells.length && !d.sheets_added?.length && !d.sheets_removed?.length
+                    ? <p className="text-sm text-zinc-300">{vt.sameAsPrev(info.previous.version)}</p>
+                    : <CompareBody data={d} inputsTitle={vt.inputs(d.n_inputs ?? d.inputs.length)} onOpenCell={onOpenCell} />}
+                  {d.truncated && <p className="text-amber-200">{vt.truncated}</p>}
+                </div>
+              ) : (
+                <p className="text-zinc-400">{vt.noPrev[info.no_diff ?? "gone"]}</p>
+              )}
+            </section>
+          )}
+          {info && !info.previous && info.version > 1 && <p className="text-zinc-400">{vt.noPrev[info.no_diff ?? "gone"]}</p>}
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-3">
+            <Action icon={ChevronRight} label={`${h.openVersion} v${version.version}`} onClick={() => onOpen(version.id)}
+              why={version.id === wid ? vt.alreadyOpen : null} />
+            <Action icon={Undo2} label={h.revertTo(version.version)} onClick={() => onRevert(version)}
+              why={version.id === latest?.id ? h.why.current : null} />
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }

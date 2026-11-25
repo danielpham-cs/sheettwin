@@ -5,7 +5,7 @@
 Two tables, neither of which can be updated or deleted from (triggers refuse it):
 
     records   one row per analysis or correction, as it was made
-        kind            scenario | sensitivity | goal_seek | correction | revert
+        kind            scenario | sensitivity | goal_seek | correction | revert | edit
         workbook        the workbook result it was made on (data/<id>/, the SHA-256 of the file's bytes), its file name
                         and full SHA-256: a record always says which version of the data it used
         parent          (analyses) the record it continues: scenarios form a tree whose root is the workbook as stored
@@ -25,6 +25,10 @@ official data only when the user confirms it; the model can propose but never ap
 into a copy of the workbook, which is stored as the file's next version (the version before it stays, and can be
 brought back the same way: a revert is a correction whose edits restore an older version's cells).
 
+An edit is a change the user made directly, without a proposal (in the Issues page: typed contents or applied fixes).
+It is recorded already applied, with the contents it replaced and the version it became, so every version made in
+SheetTwin says who made it and what changed.
+
 Going back to a scenario is choosing it: every record keeps all its changes, so running it again, comparing it with
 another, continuing from it (a new record with it as parent), or exporting it as a copy of the workbook all work from
 the record alone. Nothing is ever rewritten.
@@ -43,7 +47,7 @@ from . import __version__
 
 FILE = "history.db"
 ANALYSES = ("scenario", "sensitivity", "goal_seek")
-CHANGES = ("correction", "revert")
+CHANGES = ("correction", "revert", "edit")
 KINDS = ANALYSES + CHANGES
 REVIEW = ("proposed", "approved", "rejected", "withdrawn")
 ACTIONS = REVIEW + ("replayed", "exported", "reapplied")
@@ -90,7 +94,7 @@ class HistoryError(Exception):
 
 
 def ref(rec_id: int, kind: str) -> str:
-    """How a record is cited: S12 for an analysis, C13 for a correction or revert."""
+    """How a record is cited: S12 for an analysis, C13 for a correction, revert or edit."""
     return f"{'C' if kind in CHANGES else 'S'}{rec_id}"
 
 
@@ -146,6 +150,29 @@ class History:
                 if kind in CHANGES:
                     con.execute("INSERT INTO events(record, action, by, at, note) VALUES (?,?,?,?,?)",
                                 (rid, "proposed", author, now(), None))
+                con.commit()
+            finally:
+                con.close()
+        return self.get(rid)
+
+    def applied(self, kind: str, workbook: dict, author: str, source: str, changes: dict, *,
+                params: dict | None = None, data: dict | None = None) -> dict:
+        """Record a change that was made directly (an edit): it starts approved, by its author, with `data` naming
+        the version it became. Nothing is proposed, so nothing can be reviewed."""
+        if kind not in CHANGES:
+            raise HistoryError(400, f"{kind!r} is not a change")
+        with _lock:
+            con = self._con()
+            try:
+                cur = con.execute(
+                    "INSERT INTO records(kind, workbook, workbook_name, sha256, parent, author, source, created, "
+                    "note, changes, params, result, fingerprint, sheetir_version, twin_status) "
+                    "VALUES (?,?,?,?,NULL,?,?,?,NULL,?,?,NULL,NULL,?,NULL)",
+                    (kind, workbook["id"], workbook.get("name"), workbook.get("sha256"), author, source, now(),
+                     _dumps(changes), _dumps(params), __version__))
+                rid = cur.lastrowid
+                con.execute("INSERT INTO events(record, action, by, at, note, data) VALUES (?,?,?,?,?,?)",
+                            (rid, "approved", author, now(), None, _dumps(data)))
                 con.commit()
             finally:
                 con.close()
@@ -275,4 +302,6 @@ def summary(rec: dict) -> str:
         return f"goal seek: {p.get('target')} = {p.get('goal')} by changing {p.get('changing')}"
     if rec["kind"] == "revert":
         return f"bring back version {p.get('to_name') or p.get('to')} ({n} cells)"
+    if rec["kind"] == "edit":
+        return f"direct edit of {n} cell{'s' if n != 1 else ''}"
     return f"correction of {n} cell{'s' if n != 1 else ''}: {p.get('reason') or ''}".strip().rstrip(":")
