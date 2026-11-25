@@ -332,3 +332,27 @@ def test_agent_proposes_a_correction_that_only_the_user_applies(api):
     ok = client.post(f"{base}/history/C1/approve", json={"by": "ann"}).json()
     new = Engine(_db(ok["applied_as"]))
     assert ok["status"] == "approved" and new.value(new.key("Inputs!B1")) == 3.0
+
+
+def test_api_approval_that_recreates_an_earlier_version_makes_it_current(api):
+    """A correction whose result is byte-for-byte an earlier version reuses it, and that version becomes the current
+    one (by when it was last made current, not by its number): corrections proposed on it can then be approved."""
+    client, wid = api
+    base = "/api/projects/default"
+
+    def approve(edits, on):
+        c = client.post(f"{base}/corrections", json={"workbook": on, "edits": edits, "reason": "r", "by": "ann"}).json()
+        r = client.post(f"{base}/history/{c['ref']}/approve", json={"by": "ann"})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    v2 = approve({"Inputs!B1": "3"}, wid)["applied_as"]
+    rv = client.post(f"{base}/corrections/revert", json={"workbook": v2, "to": wid, "reason": "back", "by": "ann"}).json()
+    v3 = client.post(f"{base}/history/{rv['ref']}/approve", json={"by": "ann"}).json()["applied_as"]
+    again = approve({"Inputs!B1": "3"}, v3)  # the same edit on v3 gives v2's bytes again
+    assert again["applied_as"] == v2 and again["events"][-1]["data"]["duplicate"] is True
+    nxt = approve({"Calc!B2": "6"}, v2)  # v2 is current again, so a correction on it is accepted
+    assert nxt["applied_as"] not in (wid, v2, v3)
+    stale = client.post(f"{base}/corrections", json={"workbook": v3, "edits": {"Calc!B3": "7"}, "reason": "r",
+                                                      "by": "ann"}).json()
+    assert client.post(f"{base}/history/{stale['ref']}/approve", json={"by": "ann"}).status_code == 409

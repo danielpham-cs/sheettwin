@@ -196,7 +196,9 @@ export function TwinView({ projectId, workbookId, versions, openRef, onOpened, o
   const [tab, setTab] = useState<TwinTab>("verify");
   const [draft, setDraft] = useState<Draft>({ values: {}, parent: null });
   const actor = useActor();
-  const latest = useMemo(() => [...versions].sort((a, b) => b.version - a.version)[0], [versions]);
+  // The current version is the one uploaded (or made by an approval) last, not the highest number: an approval whose
+  // result has the bytes of an earlier version reuses that version, which becomes current again.
+  const latest = useMemo(() => [...versions].sort((a, b) => (b.last_uploaded ?? "").localeCompare(a.last_uploaded ?? ""))[0], [versions]);
 
   // A record to show (from a chat answer): open the history at it (state adjusted while rendering, not in an effect).
   const [seenRef, setSeenRef] = useState<string | null>(null);
@@ -918,7 +920,7 @@ function HistoryTab({ pid, wid, versions, latest, by, openRef, onOpened, onOpenC
           <ul className="mt-3 space-y-1.5">
             {shown.map((r) => (
               <RecordRow key={r.ref} pid={pid} rec={r} open={open === r.ref} onToggle={() => setOpen(open === r.ref ? null : r.ref)}
-                version={versionOf(r.workbook)} currentId={wid} latest={latest} by={by}
+                version={versionOf(r.workbook)} versions={versions} currentId={wid} latest={latest} by={by}
                 onCompare={() => setComparing(r)} onContinue={onContinue} onOpenCell={onOpenCell}
                 onChanged={changed} onNewVersion={onNewVersion} />
             ))}
@@ -963,8 +965,8 @@ function RecordMeta({ rec, version }: { rec: HistoryRecord; version?: Workbook }
   );
 }
 
-function RecordRow({ pid, rec, open, onToggle, version, currentId, latest, by, onCompare, onContinue, onOpenCell, onChanged, onNewVersion }: {
-  pid: string; rec: HistoryRecord; open: boolean; onToggle: () => void; version?: Workbook; currentId: string; latest?: Workbook;
+function RecordRow({ pid, rec, open, onToggle, version, versions, currentId, latest, by, onCompare, onContinue, onOpenCell, onChanged, onNewVersion }: {
+  pid: string; rec: HistoryRecord; open: boolean; onToggle: () => void; version?: Workbook; versions: Workbook[]; currentId: string; latest?: Workbook;
   by?: string; onCompare: () => void; onContinue: (rec: HistoryRecord) => void;
   onOpenCell: (cell: string) => void; onChanged: () => void; onNewVersion: (id: string) => Promise<void>;
 }) {
@@ -988,15 +990,15 @@ function RecordRow({ pid, rec, open, onToggle, version, currentId, latest, by, o
         {rec.status !== "recorded" && <Pill status={rec.status} label={h.states[rec.status]} title="" />}
       </button>
       {open && (
-        <RecordDetail pid={pid} rec={rec} currentId={currentId} latest={latest} by={by} onCompare={onCompare}
+        <RecordDetail pid={pid} rec={rec} currentId={currentId} latest={latest} versions={versions} by={by} onCompare={onCompare}
           onContinue={onContinue} onOpenCell={onOpenCell} onChanged={onChanged} onNewVersion={onNewVersion} />
       )}
     </li>
   );
 }
 
-function RecordDetail({ pid, rec, currentId, latest, by, onCompare, onContinue, onOpenCell, onChanged, onNewVersion }: {
-  pid: string; rec: HistoryRecord; currentId: string; latest?: Workbook; by?: string; onCompare: () => void;
+function RecordDetail({ pid, rec, currentId, latest, versions, by, onCompare, onContinue, onOpenCell, onChanged, onNewVersion }: {
+  pid: string; rec: HistoryRecord; currentId: string; latest?: Workbook; versions: Workbook[]; by?: string; onCompare: () => void;
   onContinue: (rec: HistoryRecord) => void; onOpenCell: (cell: string) => void; onChanged: () => void; onNewVersion: (id: string) => Promise<void>;
 }) {
   const { t } = useI18n();
@@ -1124,7 +1126,9 @@ function RecordDetail({ pid, rec, currentId, latest, by, onCompare, onContinue, 
           </>
         )}
         {correction && r.status === "approved" && r.applied_as && (
-          <button onClick={() => onNewVersion(r.applied_as!)} className={btnGhost}><ChevronRight className="size-3.5" />{h.openVersion}</button>
+          <button onClick={() => onNewVersion(r.applied_as!)} className={btnGhost}>
+            <ChevronRight className="size-3.5" />{h.openVersion}{versions.find((w) => w.id === r.applied_as) ? ` v${versions.find((w) => w.id === r.applied_as)!.version}` : ""}
+          </button>
         )}
       </div>
 
@@ -1134,7 +1138,12 @@ function RecordDetail({ pid, rec, currentId, latest, by, onCompare, onContinue, 
         onConfirm={async (note) => {
           const res = await api.review(pid, rec.ref, "approve", note || undefined, by);
           onChanged();
-          if (res.applied_as) { setMsg(h.applied(res.applied_as.slice(0, 7))); await onNewVersion(res.applied_as); }
+          if (res.applied_as) {
+            const reused = res.events.findLast((e) => e.action === "approved")?.data?.duplicate === true;
+            const v = versions.find((w) => w.id === res.applied_as)?.version;
+            setMsg(reused && v ? h.appliedSame(v) : h.applied(res.applied_as.slice(0, 7)));
+            await onNewVersion(res.applied_as);
+          }
         }} />
       <ConfirmDialog open={ask === "reject"} title={h.rejectTitle(rec.ref)} confirm={h.reject} tone="danger"
         body={<>{h.rejectBody}{changeList}</>} note={{ placeholder: h.rejectNote, required: true }} onClose={() => setAsk(null)}

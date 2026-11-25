@@ -507,13 +507,14 @@ def propose_revert(pid: str, req: RevertRequest):
 
 
 def _latest(wid: str) -> str | None:
-    """The newest version of the file `wid` is a version of."""
-    entries = provenance.catalog(_web().data_dir())
+    """The current version of the file `wid` is a version of: the one uploaded (or made by an approval) last. That is
+    not always the highest version number: an approval whose result has the same bytes as an earlier version reuses
+    it, and it becomes the current one again."""
+    entries = provenance.catalog(_web().data_dir())  # most recently uploaded first
     me = next((e for e in entries if e["id"] == wid), None)
     if me is None:
         return None
-    same = [e for e in entries if e["name"].lower() == me["name"].lower() and e["status"] != "failed"]
-    return max(same, key=lambda e: e["version"])["id"]
+    return next(e["id"] for e in entries if e["name"].lower() == me["name"].lower() and e["status"] != "failed")
 
 
 @router.post("/api/projects/{pid}/history/{ref}/approve")
