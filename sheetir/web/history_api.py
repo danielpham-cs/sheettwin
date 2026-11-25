@@ -15,6 +15,7 @@ file's next version):
 
 History:
 
+    GET  /api/projects/{pid}/model-cells                ?workbook= &q=: inputs and formula cells to pick from
     GET  /api/projects/{pid}/history                    ?workbook= &kind= &status=
     GET  /api/projects/{pid}/history/{ref}              one record with its result and events
     GET  /api/projects/{pid}/history/compare?a=&b=      two analyses side by side
@@ -206,6 +207,15 @@ def run_goal_seek(pid: str, req: GoalSeekRequest):
         params = {"target": result["target"]["cell"], "goal": req.goal, "changing": result["changing"]["cell"],
                   "low": req.low, "high": req.high}
         return _save(h, "goal_seek", req, wb, eng, parent, changes, params, result, result_fingerprint(result))
+
+
+@router.get("/api/projects/{pid}/model-cells")
+def model_cells(pid: str, workbook: str, q: str | None = None, limit: int = 200):
+    """The cells a what-if screen offers: inputs a scenario can change and formula cells to analyze (key outputs
+    first), with their values and trust statuses; `q` searches every cell by id or label."""
+    with _errors():
+        wb = _workbook(pid, workbook)
+        return _engine(wb["id"]).catalog(q, max(1, min(limit, 1000)))
 
 
 # ---- history ----------------------------------------------------------------------------------------------------
@@ -435,7 +445,7 @@ def make_proposal(h: History, kind: str, wb: dict, edits: dict, params: dict, au
     impact = None
     if values:
         r = eng.run(values)
-        impact = {k: r[k] for k in ("outputs", "changed", "n_changed", "truncated", "warnings", "trust")}
+        impact = {k: r[k] for k in ("outputs", "changed", "n_changed", "truncated", "warnings", "notices", "trust")}
     result = {"impact": impact, "formula_edits": len(canon) - len(values)}
     return h.add(kind, wb, author, source, canon, params=params, result=result, twin_status=eng.check["status"])
 

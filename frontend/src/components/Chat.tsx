@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  AlertTriangle, ArrowUp, BookOpen, Bot, ChartLine, ChartPie, CircleCheck, Cloud, Crosshair, Database, FileSpreadsheet, FolderOutput, Grid3x3,
+  AlertTriangle, ArrowUp, BookOpen, Bot, ChartLine, ChartPie, CircleCheck, Cloud, Crosshair, Database, FileSpreadsheet, FolderOutput, GitBranch, Grid3x3,
   ListTree, Lock, MessageSquareText, Network, Search, Settings2, Sparkles, Table2, User,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -293,9 +293,11 @@ type Props = {
   knowledge?: { summary: string; set: boolean; onOpen: () => void };
   onNavigate: (to: Exclude<Destination, "chat">) => void;
   onShowReport: () => void;
+  /** Open a history record an answer made (an analysis S12, or a correction C13 to approve) in the twin view. */
+  onOpenRecord?: (ref: string) => void;
 };
 
-export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, onNewData, onShowGraph, onOpenSource, onNavigate, onShowReport, context, knowledge }: Props) {
+export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, onNewData, onShowGraph, onOpenSource, onNavigate, onShowReport, onOpenRecord, context, knowledge }: Props) {
   const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -494,6 +496,23 @@ export function Chat({ summary, messages, pending, liveSteps = [], llm, onSend, 
                         <Markdown text={m.content} onCell={(id) => submit(id)} />
                         {m.meta?.source === "llm" && <ReplyMeta meta={m.meta} />}
                         {m.meta?.source === "agent" && <AgentMeta meta={m.meta} onOpenSource={onOpenSource} />}
+                        {!!m.meta?.records?.length && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {m.meta.records.map((ref) => {
+                              const correction = ref.startsWith("C");
+                              return (
+                                <button key={ref} onClick={() => onOpenRecord?.(ref)}
+                                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs ring-1 transition ${correction
+                                    ? "bg-amber-400/10 text-amber-100 ring-amber-300/30 hover:bg-amber-400/20"
+                                    : "bg-white/5 text-zinc-200 ring-white/10 hover:bg-white/10"}`}>
+                                  <GitBranch className="size-3.5" />
+                                  {correction ? t.twin.chat.correction(ref) : t.twin.chat.scenario(ref)}
+                                  <span className="text-[11px] underline">{t.twin.chat.open}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                         {!!m.meta?.knowledge?.length && (
                           <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
                             <BookOpen className="size-3.5 text-blue-300" />{t.knowledge.used}

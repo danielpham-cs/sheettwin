@@ -15,8 +15,8 @@ local one, no data leaves the machine.
 > answers questions about it with a grounded language model. It translates the workbook's formulas into a **Python
 > twin** and verifies it against Excel's saved values (V1) and an independent engine on random inputs (V2). On that
 > twin it runs what-if scenarios, sensitivity and goal seek, records each in the project's history, and lets the chat
-> propose data corrections that the user confirms before they become the next version. These have an HTTP API and chat tools, but no screens in the
-> UI yet. See [Status and roadmap](#status-and-roadmap).
+> propose data corrections that the user confirms before they become the next version. All of it is in the UI's **Twin** view (分身), the chat and an
+> HTTP API. See [Status and roadmap](#status-and-roadmap).
 
 ---
 
@@ -593,6 +593,15 @@ The history is stored with the project, in the data directory of the user (`SHEE
 separated, only that user sees it (sharing a project between users is not built yet); without separation, everyone who
 uses the server shares it and names who they are.
 
+In the UI, the **Twin** view (分身, in the left rail; a badge counts the corrections waiting for approval) has five tabs:
+**Verify** (run the V1 / V2 check, translation coverage, mismatches, per-group results, download `twin.py`),
+**What-if** (type new values next to the inputs, try them, save them as a scenario, or continue one from the history),
+**Sensitivity** (a tornado of how far a result swings), **Goal seek**, and **History & corrections** (every record with
+its changes, results and timeline; recompute, export, compare two, continue, apply to the current version; approve,
+reject or withdraw a correction; and the file's versions, with a proposal to go back to any of them). Who acts is the
+signed-in account, or the name typed at the top of the view (kept in the browser). A chat answer that made a record
+shows a link to it.
+
 In the chat, questions such as "what if the rate were 3 %?" and requests to change the data are routed to the query
 agent with five more tools — `model_cells` (inputs and key outputs with their cells), `what_if`, `sensitivity`,
 `goal_seek`, which run on the twin and record each analysis in the history (source `agent`, the question as its note),
@@ -605,6 +614,7 @@ and `propose_correction`, which records a pending correction (`C13`) for the use
 | `POST` | `/api/projects/{pid}/scenarios` | `{workbook, changes, parent?, reset?, outputs?, note?, save?, by?}`; `save: false` computes without recording |
 | `POST` | `/api/projects/{pid}/sensitivity` | `{workbook, target, inputs?, step?, parent?, note?, save?, by?}` |
 | `POST` | `/api/projects/{pid}/goal-seek` | `{workbook, target, goal, changing, low?, high?, parent?, note?, save?, by?}`; the record's changes include the value found |
+| `GET` | `/api/projects/{pid}/model-cells?workbook=&q=` | Inputs a scenario can change and result cells to analyze (key outputs first), with values and trust statuses; `q` searches every cell |
 | `GET` | `/api/projects/{pid}/history?workbook=&kind=&status=` | Every record, newest first, with its status and events (`pending`, `approved`, … for corrections) |
 | `GET` | `/api/projects/{pid}/history/{ref}` | One record with its full result |
 | `GET` | `/api/projects/{pid}/history/compare?a=&b=` | Two analyses side by side |
@@ -1086,8 +1096,8 @@ pipeline on all 737 sheets with 5-fold cross-validation. That is not directly co
 | SheetTwin artifact | Status |
 |---|---|
 | A5 Audit report | **Partial.** Rule-based findings in a downloadable report (HTML printable to PDF, Markdown; Chinese and English). No Excel or Word format, and no written summary of the business impact |
-| A3 Interactive twin web app | **Partial.** Structure browser; what-if, sensitivity, goal seek, history and corrections have an API but no screens yet |
-| A1 Verified Python model | **Partial.** Formula groups translated to Python and verified: V1 against Excel's saved values, V2 against pycel on random scenarios (`sheetir twin`). Used by the what-if engine and its chat tools; not shown in the UI yet, and not vectorized with NumPy (one function per group, run cell by cell) |
+| A3 Interactive twin web app | **Done.** Structure browser, and the Twin view: V1 / V2 results, what-if, sensitivity (tornado), goal seek, the project's history (compare, recompute, export, continue, reapply) and corrections to approve or reject, with a revert to any older version |
+| A1 Verified Python model | **Partial.** Formula groups translated to Python and verified: V1 against Excel's saved values, V2 against pycel on random scenarios (`sheetir twin`). Used by the what-if engine, its chat tools and the Twin view (which runs the check and shows V1 / V2 per formula group); not vectorized with NumPy (one function per group, run cell by cell) |
 | A2 Plain-language specification | Not started |
 | A4 Grounded Q&A analyst | **Partial.** Data questions answered by a query agent over a catalog of clean tables (families of monthly sheets, units, join keys), with guarded SQL, checked numbers, sources and charts; structure and issue questions from the IR. Evaluated on synthetic workbooks only. What-if questions go to the twin's tools (`what_if`, `sensitivity`, `goal_seek`), each recorded in the project's history |
 
@@ -1098,8 +1108,8 @@ Next steps, in order:
 3. **Twin in the product**: show V1 / V2 per group in the web UI, and let the chat answer computed values (prices, margins) from verified groups only.
 4. **LLM naming** (Cartographer): propose names for groups, fields and parameters from the packaged context, constrained by a JSON schema. Table suggestions (`understand.suggest_tables`) are written but not yet offered in the UI.
 5. ~~**Scenario tools** for the Q&A analyst (`run_scenario`, sensitivity, goal seek), on the verified twin.~~ Done
-   (`sheetir/whatif.py`, chat tools, project history, corrections proposed by the chat and confirmed by the user). Next: screens for
-   them, and sharing a project's history between separated users.
+   (`sheetir/whatif.py`, chat tools, project history, corrections proposed by the chat and confirmed by the user, the Twin view). Next: sharing a project's
+   history between separated users.
 6. **Storage**: content-addressed version history, a catalog across workbooks, encryption at rest.
 
 ### Known limitations

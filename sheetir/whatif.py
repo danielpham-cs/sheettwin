@@ -285,6 +285,31 @@ class Engine:
                           "status": self.status.get(ck)})
         return {"inputs": inputs, "cells": cells, "n_cells": len(diff), "truncated": len(diff) > MAX_LISTED}
 
+    def catalog(self, query: str | None = None, limit: int = 200) -> dict:
+        """Cells a what-if screen offers. inputs: constants a scenario can change (labelled ones first, then those
+        SheetIR found to be inputs; with `query`, any constant whose id or label contains it). targets: formula cells
+        to analyze (the key outputs first; with `query`, any formula cell whose id or label contains it)."""
+        q = (query or "").strip().lower()
+        tw = self.twin
+
+        def hit(ck) -> bool:
+            return q in self.cell_id(ck).lower() or q in str(self.label(ck) or "").lower()
+
+        if q:
+            inputs = [ck for ck in tw.constants if hit(ck)]
+            inputs.sort(key=lambda ck: (ck not in self.labels, tw.roles.get(ck) != "input", ck))
+            targets = [ck for ck in tw.order if hit(ck)]
+            targets.sort(key=lambda ck: tw.roles.get(ck) != "output")
+        else:
+            inputs = [ck for ck in self.labels if ck in tw.constants]
+            inputs += [ck for ck, r in tw.roles.items() if r == "input" and ck in tw.constants and ck not in self.labels]
+            targets = self.outputs()
+        row = lambda ck, st: {"cell": self.cell_id(ck), "label": self.label(ck), "value": show(self.value(ck)),  # noqa: E731
+                              "status": st, "number": _number(self.value(ck)) is not None}
+        return {"inputs": [row(ck, "input") for ck in inputs[:limit]], "n_inputs": len(inputs),
+                "targets": [row(ck, self.status.get(ck)) for ck in targets[:limit]], "n_targets": len(targets),
+                "trust": self.trust()}
+
     def outputs(self) -> list:
         """The workbook's key outputs: cells SheetIR found to be final results (role output)."""
         return [ck for ck in self.twin.order if self.twin.roles.get(ck) == "output"]
@@ -313,21 +338,25 @@ class Engine:
         out_rows = [self._entry(ck, base.get(ck, self.value(ck)), values.get(ck, ch.get(ck, self.value(ck))))
                     for ck in want]
         stale = [ck for ck in self.twin.group_of if self.status[ck] == "not_recomputed"]
-        warnings = []
+        warnings, notices = [], []  # notices: the same, as {code, n}, for a UI to word in its own language
         reads = self._reads_changed(ch)
         hit = [ck for ck in stale if ck in reads]
         if hit:
+            notices.append({"code": "untranslated_reads", "n": len(hit)})
             warnings.append(f"{len(hit)} formula cells read the changed cells but are, or read, formulas the twin "
                             "could not translate: those keep Excel's saved values, so these cells do not follow this "
                             "scenario (or follow it only in part)")
         elif stale:
+            notices.append({"code": "untranslated", "n": len(stale)})
             warnings.append(f"{len(stale)} formula cells are, or read, formulas the twin could not translate "
                             "(status not_recomputed): they keep Excel's saved values and would not show an effect of "
                             "these changes")
         bad = sum(1 for ck in changed if self.status[ck] in ("failed", "depends_on_failed"))
         if bad:
+            notices.append({"code": "failed", "n": bad})
             warnings.append(f"{bad} changed cells belong to (or read) formula groups that failed V1 / V2")
         if self.check["status"] == "not_run":
+            notices.append({"code": "not_checked", "n": 0})
             warnings.append("the twin was not checked against Excel yet: run the V1 / V2 check before relying on this")
         return {
             "changes": [{"cell": self.cell_id(ck), "label": self.label(ck), "old": show(self.value(ck)),
@@ -337,6 +366,7 @@ class Engine:
             "n_changed": len(changed),
             "truncated": len(changed) > MAX_LISTED,
             "warnings": warnings,
+            "notices": notices,
             "trust": self.trust(),
             "fingerprint": fingerprint(values),
         }

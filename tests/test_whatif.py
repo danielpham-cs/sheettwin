@@ -71,6 +71,7 @@ def test_cells_that_cannot_follow_a_change_say_so(tmp_path):
     assert eng.status[eng.key("S!B2")] == "not_recomputed" and eng.status[eng.key("S!B3")] == "unchecked"
     r = eng.run({"S!A1": 3})  # INDIRECT reads A1 without SheetIR seeing it: a general warning
     assert any("not_recomputed" in w for w in r["warnings"])
+    assert {n["code"] for n in r["notices"]} == {"untranslated", "not_checked"}
     r = eng.run({"S!A2": 6})  # B2 reads A2 and the untranslated B1
     assert any("read the changed cells" in w for w in r["warnings"])
     assert {c["cell"]: c["status"] for c in r["changed"]} == {"S!B2": "not_recomputed"}
@@ -172,6 +173,15 @@ def test_api_scenarios_continue_compare_replay_and_export(api):
     book = load_workbook(io.BytesIO(x.content))
     assert book["Inputs"]["B1"].value == 3 and book["Calc"]["B3"].value == 4
     assert book["Calc"]["D2"].value == "=B2*C2*Rate"  # formulas are kept; Excel recalculates on open
+
+
+def test_api_model_cells_lists_inputs_and_targets(api):
+    client, wid = api
+    m = client.get("/api/projects/default/model-cells", params={"workbook": wid}).json()
+    assert m["inputs"][0] == {"cell": "Inputs!B1", "label": "Rate", "value": 2.0, "status": "input", "number": True}
+    found = client.get("/api/projects/default/model-cells", params={"workbook": wid, "q": "calc!d5"}).json()
+    assert [t["cell"] for t in found["targets"]] == ["Calc!D5"] and found["targets"][0]["status"] == "verified"
+    assert m["trust"]["check"] == "verified"
 
 
 def test_api_sensitivity_and_goal_seek_are_recorded(api):

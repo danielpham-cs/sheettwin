@@ -220,6 +220,8 @@ export type ChatReply = {
   workbook?: string;
   /** The project's documents the model was given with the question (`whole`: all of it, else relevant passages). */
   knowledge?: { id: string; name: string; whole: boolean }[];
+  /** The history records the answer made (what-if analyses S12, proposed corrections C13). */
+  records?: string[];
 };
 
 /** A document added to a project for the model to read (its text is extracted at upload). */
@@ -293,6 +295,93 @@ export type ChartData = {
     fields: ChartField[];
     rows: { key: string; values: Record<string, unknown> }[];
   }[];
+};
+
+// ---- Python twin, what-if and history (sheetir/twin.py, sheetir/whatif.py, sheetir/web/history_api.py) ----------
+
+/** How far a computed cell can be trusted (sheetir/whatif.py). */
+export type TrustStatus = "verified" | "v1_passed" | "v2_passed" | "unchecked" | "failed" | "depends_on_failed"
+  | "not_recomputed" | "input" | string;
+
+export type TwinCheck = {
+  status: "verified" | "partly_verified" | "failed" | "untranslated" | "unchecked" | "not_run";
+  at?: string;
+  seconds?: number;
+  coverage?: { groups: number; groups_translated: number; cells: number; cells_translated: number;
+    untranslated: { reason: string; cells: number }[] };
+  groups?: Record<string, number>;
+  cells?: Record<string, number>;
+  v1?: { status: string; summary: string; cells?: number; with_baseline?: number;
+    isolated?: { checked: number; passed: number }; end_to_end?: { checked: number; passed: number } };
+  v2?: { status: string; summary: string; checked?: number; passed?: number; scenarios_run?: number;
+    known_differences?: Record<string, number> } | null;
+  group_results?: { group_id: number; status: string; reason: string | null; functions: string[]; v1_checked: number;
+    v1_passed: number; v2_checked: number; v2_passed: number; anchor: string; last: string; n_cells: number; r1c1: string;
+    semantic: string | null }[];
+  mismatches?: { level: string; mode: string; scenario: number | null; cell_id: string; group_id: number | null;
+    expected: string | null; got: string | null; inputs: string | null }[];
+};
+
+export type ModelCell = { cell: string; label: string | null; value: unknown; status: TrustStatus; number: boolean };
+export type TrustSummary = { check: string | null; checked_at: string | null; cells: Record<string, number> };
+export type ModelCells = { inputs: ModelCell[]; n_inputs: number; targets: ModelCell[]; n_targets: number; trust: TrustSummary };
+
+export type CellChange = { cell: string; label: string | null; base: unknown; value: unknown; delta: number | null; status: TrustStatus };
+export type ScenarioResult = {
+  changes: { cell: string; label: string | null; old: unknown; new: unknown }[];
+  outputs: CellChange[];
+  changed: CellChange[];
+  n_changed: number;
+  truncated: boolean;
+  warnings: string[];
+  /** The warnings as codes, for the UI to word: untranslated_reads | untranslated | failed | not_checked. */
+  notices?: { code: string; n: number }[];
+  trust: TrustSummary;
+  fingerprint: string;
+};
+export type SensitivityResult = {
+  target: { cell: string; label: string | null; value: number; status: TrustStatus };
+  step: number;
+  inputs: { cell: string; label: string | null; value: number; low_input: number; high_input: number;
+    target_low: unknown; target_high: unknown; swing: number | null; elasticity: number | null }[];
+  skipped: { cell: string; reason: string }[];
+  considered: number;
+  truncated: boolean;
+  trust: TrustSummary;
+};
+export type GoalSeekResult = {
+  target: { cell: string; label: string | null; status: TrustStatus; before: unknown; goal: number; achieved: unknown };
+  changing: { cell: string; label: string | null; before: number; value: number };
+  found: boolean;
+  evaluations: number;
+  note: string | null;
+  trust: TrustSummary;
+};
+
+export type RecordKind = "scenario" | "sensitivity" | "goal_seek" | "correction" | "revert";
+export type RecordStatus = "recorded" | "pending" | "approved" | "rejected" | "withdrawn";
+export type HistoryEvent = { action: string; by: string; at: string; note: string | null; data: Record<string, unknown> | null };
+/** One analysis (S12) or correction (C13) in a project's history. A correction's `changes` are cell contents as typed
+ * in Excel; an analysis's are the values it set. */
+export type HistoryRecord = {
+  id: number; ref: string; kind: RecordKind; status: RecordStatus;
+  workbook: string; workbook_name: string | null; sha256: string | null; workbook_stored?: boolean;
+  parent: number | null; author: string; source: "user" | "agent" | "api"; created: string; note: string | null;
+  changes: Record<string, unknown>; params: Record<string, unknown> | null; fingerprint: string | null;
+  sheetir_version: string | null; twin_status: string | null; events: HistoryEvent[]; applied_as: string | null;
+  summary?: string;
+  result?: Record<string, unknown> | null; // only from historyRecord()
+};
+/** What `save: false` returns: the result, not recorded. */
+export type Preview<R> = { saved: false; kind: RecordKind; changes: Record<string, unknown>; params: Record<string, unknown>; result: R };
+export type Saved<R> = HistoryRecord & { saved: true; result: R };
+export type CompareResult = {
+  a: Pick<HistoryRecord, "ref" | "kind" | "workbook" | "note" | "author" | "created">;
+  b: Pick<HistoryRecord, "ref" | "kind" | "workbook" | "note" | "author" | "created">;
+  same_workbook: boolean;
+  inputs: { cell: string; label?: string | null; a: unknown; b: unknown }[];
+  cells: { cell: string; label: string | null; a: unknown; b: unknown; delta?: number | null; status?: TrustStatus }[];
+  n_cells: number; truncated: boolean; note?: string;
 };
 
 /** An API error; `kind` is set when the backend names the problem (e.g. "unsupported_type"). */
@@ -390,6 +479,37 @@ export const api = {
   resetUserTables: (id: string, sheet: string) =>
     call<{ status: ParseStatus }>(`/api/workbooks/${id}/user-tables/${encodeURIComponent(sheet)}`, { method: "DELETE" }),
   rebuild: (id: string) => call<{ id: string; failed: boolean; status: ParseStatus; error?: ParseError }>(`/api/workbooks/${id}/rebuild`, { method: "POST" }),
+  me: () => call<{ user: string | null; separated: boolean }>("/api/me"),
+  twin: (id: string) => call<TwinCheck>(`/api/workbooks/${id}/twin`),
+  runTwin: (id: string, scenarios = 10) => call<TwinCheck>(`/api/workbooks/${id}/twin`, json({ scenarios })),
+  modelCells: (pid: string, workbook: string, q?: string) =>
+    call<ModelCells>(`/api/projects/${pid}/model-cells?workbook=${workbook}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
+  /** `parent`: a recorded analysis to continue (its changes come first); `save: false` computes without recording. */
+  scenario: <S extends boolean>(pid: string, body: { workbook: string; changes: Record<string, unknown>; parent?: string | null;
+    reset?: string[]; note?: string; save: S; by?: string }) =>
+    call<S extends true ? Saved<ScenarioResult> : Preview<ScenarioResult>>(`/api/projects/${pid}/scenarios`, json(body)),
+  sensitivity: (pid: string, body: { workbook: string; target: string; inputs?: string[]; step: number; parent?: string | null; note?: string; by?: string }) =>
+    call<Saved<SensitivityResult>>(`/api/projects/${pid}/sensitivity`, json({ ...body, save: true })),
+  goalSeek: (pid: string, body: { workbook: string; target: string; goal: number; changing: string; parent?: string | null; note?: string; by?: string }) =>
+    call<Saved<GoalSeekResult>>(`/api/projects/${pid}/goal-seek`, json({ ...body, save: true })),
+  history: (pid: string, filter: { workbook?: string; kind?: string; status?: string } = {}) => {
+    const q = new URLSearchParams(Object.entries(filter).filter(([, v]) => v) as [string, string][]).toString();
+    return call<{ records: HistoryRecord[] }>(`/api/projects/${pid}/history${q ? `?${q}` : ""}`);
+  },
+  historyRecord: (pid: string, ref: string) => call<HistoryRecord>(`/api/projects/${pid}/history/${ref}`),
+  compare: (pid: string, a: string, b: string) => call<CompareResult>(`/api/projects/${pid}/history/compare?a=${a}&b=${b}`),
+  replay: (pid: string, ref: string, by?: string) =>
+    call<{ ref: string; same: boolean; recorded: string | null; now: string }>(`/api/projects/${pid}/history/${ref}/replay`, json({ by })),
+  reapply: (pid: string, ref: string, to: string, force: boolean, by?: string) =>
+    call<{ reapplied: boolean; checks: { cell: string; ok: boolean; problem?: string }[]; record?: HistoryRecord }>(
+      `/api/projects/${pid}/history/${ref}/reapply`, json({ to, force, by })),
+  recordExportUrl: (pid: string, ref: string) => `${BASE}/api/projects/${pid}/history/${ref}/export`,
+  propose: (pid: string, body: { workbook: string; edits?: Record<string, string>; from_scenario?: string; reason: string; by?: string }) =>
+    call<HistoryRecord>(`/api/projects/${pid}/corrections`, json(body)),
+  proposeRevert: (pid: string, body: { workbook: string; to: string; reason: string; by?: string }) =>
+    call<HistoryRecord>(`/api/projects/${pid}/corrections/revert`, json(body)),
+  review: (pid: string, ref: string, action: "approve" | "reject" | "withdraw", note?: string, by?: string) =>
+    call<HistoryRecord>(`/api/projects/${pid}/history/${ref}/${action}`, json({ note, by })),
   /** `lang` picks the language of a report; `inline` opens it in the browser instead of downloading it. */
   exportUrl: (id: string, name: string, opts: { lang?: string; inline?: boolean } = {}) => {
     const q = new URLSearchParams();
