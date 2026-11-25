@@ -5,6 +5,7 @@
     describe_table(card_id)                      a card in full: columns with types and units, sample rows, relations
     run_sql(sql)                                 a guarded read-only query; the result is kept under a result_id
     make_chart(result_id, type, x, y, title)     a chart of a kept result: bar | line | pie | scatter
+    model_cells / what_if / sensitivity / goal_seek / propose_correction   the twin's tools (whatif_tools.py), when given
     final_answer(answer, result_ids, chart_id)   handled by the loop
 
 Hints after a query (§7.3.2): the right column names when one is unknown; the values a column really holds when a
@@ -47,8 +48,9 @@ def jsonable(v):
 
 
 class Toolbox:
-    def __init__(self, catalog, settings: Settings | None = None):
+    def __init__(self, catalog, settings: Settings | None = None, whatif=None):
         self.cat = catalog
+        self.whatif = whatif  # WhatIfTools, or None: the what-if tools are not offered
         self.s = settings or get_settings()
         self._con = None
         self.results: dict[str, dict] = {}
@@ -77,9 +79,20 @@ class Toolbox:
                 return self.run_sql(str(args.get("sql", "")))
             if tool == "make_chart":
                 return self.make_chart(**{k: args.get(k) for k in ("result_id", "type", "x", "y", "title")})
+            if tool in ("model_cells", "what_if", "sensitivity", "goal_seek", "propose_correction"):
+                return self._whatif(tool, args)
             return {"error": f"unknown tool {tool!r}"}
         except Exception as e:  # noqa: BLE001 - the model gets the error, the loop goes on
             return {"error": f"{type(e).__name__}: {e}"[:400]}
+
+    def _whatif(self, tool: str, args: dict) -> dict:
+        if self.whatif is None:
+            return {"error": f"{tool} is not available here: no workbook of this question has a Python twin"}
+        res = self.whatif.dispatch(tool, args)
+        if "result_id" not in res:
+            return res
+        self.results[res["result_id"]] = jsonable(res)
+        return jsonable({k: v for k, v in res.items() if k not in ("sql", "tables")})
 
     # ---- search_catalog / describe_table -----------------------------------------------------------------------------
 

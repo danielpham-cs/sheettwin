@@ -48,6 +48,8 @@ def provenance(catalog, results: list[dict]) -> list[dict]:
     """[{sheet, range, table_title, card_id}] for the given run_sql results, without duplicates."""
     out, seen = [], set()
     for res in results:
+        if not res.get("sql"):  # a what-if result (whatif_tools.py): read from cells, not tables
+            continue
         values = _filter_values(res["sql"])
         for t in res.get("tables", []):
             for src in catalog.sources(t, values):

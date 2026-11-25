@@ -6,7 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Tool = Literal["search_catalog", "describe_table", "run_sql", "make_chart", "final_answer"]
+Tool = Literal["search_catalog", "describe_table", "run_sql", "make_chart", "model_cells", "what_if", "sensitivity",
+               "goal_seek", "propose_correction", "final_answer"]
 
 
 class AgentAction(BaseModel):

@@ -1,4 +1,4 @@
-"""Command line: sheetir sample | build | trace | sql."""
+"""Command line: sheetir sample | build | trace | sql | twin | serve."""
 
 from __future__ import annotations
 
@@ -75,6 +75,39 @@ def _cmd_sql(args) -> int:
     return 0
 
 
+def _cmd_twin(args) -> int:
+    from .twin import check, export_module
+
+    db = Path(args.db)
+    if db.suffix.lower() in (".xlsx", ".xlsm", ".xls", ".ods", ".csv", ".tsv"):  # a workbook: parse it first
+        xlsx, db = db, db.with_suffix(".sheetir.db")
+        build_ir(xlsx, db, verify=False)
+        args.xlsx = args.xlsx or str(xlsx)
+    r = check(db, args.xlsx, v2=not args.no_v2, scenarios=args.scenarios, seed=args.seed, max_cells=args.max_cells)
+    cov, v1, v2 = r["coverage"], r["v1"], r["v2"]
+    print(f"Python twin of {db}: {r['status'].upper()} ({r['seconds']}s)")
+    print(f"  translated  {cov['groups_translated']}/{cov['groups']} formula groups, "
+          f"{cov['cells_translated']}/{cov['cells']} cells")
+    for u in cov["untranslated"][:8]:
+        print(f"    kept as Excel saved them: {u['cells']} cells, {u['reason']}")
+    print(f"  V1          {v1['status'].upper()}: {v1['summary']}")
+    if v2 is not None:
+        print(f"  V2          {v2['status'].upper()}: {v2['summary']}")
+        known = v2.get("known_differences") or {}
+        if known:
+            print("    counted as agreeing, where pycel differs from Excel and the twin follows Excel: "
+                  + ", ".join(f"{n} {k}" for k, n in sorted(known.items())))
+    for level, rep in (("V1", v1), ("V2", v2 or {})):
+        for mm in (rep.get("mismatches") or [])[:5]:
+            where = f"scenario {mm['scenario']}" if mm.get("scenario") is not None else mm["mode"]
+            print(f"    {level} mismatch {mm['cell']} ({where}): expected {mm['expected']}, twin gave {mm['got']}")
+    print("  groups      " + ", ".join(f"{n} {k}" for k, n in sorted(r["groups"].items())))
+    if args.out:
+        Path(args.out).write_text(export_module(db), encoding="utf-8")
+        print(f"  wrote {args.out}")
+    return 1 if r["status"] == "failed" else 0
+
+
 def _cmd_serve(args) -> int:
     import os
 
@@ -120,6 +153,16 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("db")
     q.add_argument("query")
     q.set_defaults(fn=_cmd_sql)
+
+    v = sub.add_parser("twin", help="translate formulas to Python and verify them (V1 vs Excel, V2 vs pycel)")
+    v.add_argument("db", help="a SheetIR database, or a workbook (parsed first)")
+    v.add_argument("--xlsx", help="the workbook, for V2 (default: the database's source file)")
+    v.add_argument("-o", "--out", help="also write the twin as a Python module, e.g. model.py")
+    v.add_argument("--no-v2", action="store_true", help="skip V2 (needs pycel)")
+    v.add_argument("--scenarios", type=int, default=10, help="random input scenarios for V2 (default 10)")
+    v.add_argument("--seed", type=int, default=0)
+    v.add_argument("--max-cells", type=int, default=400, help="formula cells V2 compares per scenario")
+    v.set_defaults(fn=_cmd_twin)
 
     w = sub.add_parser("serve", help="start the local web UI")
     w.add_argument("--host", default="127.0.0.1", help="use 0.0.0.0 to share on the LAN")

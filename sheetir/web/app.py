@@ -39,21 +39,25 @@ from pydantic import BaseModel
 from .. import __version__, fixes
 from ..agent.loop import answer as agent_answer
 from ..agent.tools import jsonable
+from ..agent.whatif_tools import WhatIfTools
 from ..build import build_ir
 from ..catalog.store import CatalogHandle, build_catalog
 from ..config import is_local_url
+from ..history import History
 from ..convert import SUFFIXES
 from ..llm import get_llm, llm_status as _llm_settings_status
 from ..loader import WorkbookError
 from ..report import audit_report, to_html, to_markdown
 from ..sample import make_quotation
 from ..store import IR_SCHEMA, TRACE_SQL
+from ..twin import check as check_twin, export_module, stored as stored_twin
 from ..understand import ask
 from ..verify import NOT_UNDERSTOOD
 from ..catalog.project import ProjectCatalog
 from . import graph, knowledge, projects, provenance, users
 from .basepath import BasePathMiddleware
 from .charts import charts
+from .history_api import record_edit, router as history_router, who as history_who
 from .chat import answer, find_cells
 
 STATIC = Path(__file__).parent / "static"
@@ -477,6 +481,7 @@ def fix_suggestions(wid: str):
 
 class ApplyFixes(BaseModel):
     cells: list[str]
+    by: str | None = None  # who, when users are not separated (recorded in the project history)
 
 
 @app.post("/api/workbooks/{wid}/fixes/apply")
@@ -497,6 +502,7 @@ def apply_fixes(wid: str, req: ApplyFixes):
     data = fixes.apply(src, edits)
     res = _ingest(data, provenance.read(folder)["name"])
     projects.follow(data_dir(), wid, res["id"])
+    record_edit(wid, res["id"], res["duplicate"], edits, "fix", req.by)
     return {**res, "applied": sorted(edits)}
 
 
@@ -511,6 +517,7 @@ MAX_EDITS = 2000
 
 class Edits(BaseModel):
     edits: dict[str, str]  # cell id -> contents as typed in Excel ("=..." formula, "" to clear)
+    by: str | None = None  # who, when users are not separated (recorded in the project history)
 
 
 @app.post("/api/workbooks/{wid}/edits")
@@ -530,6 +537,7 @@ def edit_cells(wid: str, req: Edits):
         raise HTTPException(400, str(exc)) from exc
     res = _ingest(data, provenance.read(folder)["name"])
     projects.follow(data_dir(), wid, res["id"])
+    record_edit(wid, res["id"], res["duplicate"], req.edits, "edit", req.by)
     return {**res, "edited": sorted(req.edits)}
 
 
@@ -786,11 +794,14 @@ def _only_cells(con: sqlite3.Connection, message: str) -> bool:
 
 
 ROUTE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["route"],
-                "properties": {"route": {"type": "string", "enum": ["data", "structure", "issues"]}}}
+                "properties": {"route": {"type": "string", "enum": ["data", "what_if", "structure", "issues"]}}}
 ROUTE_SYSTEM = """Classify a question about an Excel workbook.
 - data: about the values in its tables: lookups, counts, totals, averages, comparisons, rankings, trends, periods,
   or a request to chart or visualize them.
 - structure: what the workbook is or does, its sheets, columns, formulas, how a cell is calculated, parameters.
+- what_if: what would happen to results if some values changed, how sensitive a result is to its inputs, or what
+  value an input needs for a result to reach a target ("what if the rate were 3%", "what price gives a 20% margin").
+  Also a request to change or correct the stored data ("change B3 to 120", "the rate should be 3%, fix it").
 - issues: errors, risks, problems or warnings found in the workbook.
 Return JSON {"route": ...}."""
 
@@ -803,17 +814,33 @@ def _route(question: str, llm, h: CatalogHandle) -> str:
         return "data"
 
 
-def _agent_reply(question: str, catalog, llm, lang: str, on_step, context: str = "") -> dict:
-    r = agent_answer(question, catalog, llm, lang=lang, on_step=on_step, context=context)
-    last_sql = r.results[-1]["sql"] if r.results else None
-    return jsonable({
+def _whatif_tools(pid: str | None, wids: list[str], question: str) -> WhatIfTools | None:
+    """The agent's what-if tools over the parsed workbooks `wids` (the one in view first), recording in the history
+    of project `pid` (by default the first project that lists the first workbook, else "default")."""
+    books = []
+    for wid in dict.fromkeys(wids):
+        db = data_dir() / wid / "ir.db"
+        if _ID_RE.match(wid) and db.exists():
+            books.append((wid, provenance.read(db.parent)["name"], db))
+    if not books:
+        return None
+    if pid is None:
+        pid = next(iter(projects.holders(data_dir(), books[0][0])), projects.DEFAULT)
+    return WhatIfTools(books, History(projects.folder(data_dir(), pid)), history_who(None), question)
+
+
+def _agent_reply(question: str, catalog, llm, lang: str, on_step, context: str = "", whatif=None) -> dict:
+    r = agent_answer(question, catalog, llm, lang=lang, on_step=on_step, context=context, whatif=whatif)
+    last_sql = next((x["sql"] for x in reversed(r.results) if x.get("sql")), None)
+    return jsonable({"records": whatif.records if whatif is not None else [],
         "reply": r.answer, "cells": [], "source": "agent", "model": r.model, "route": "data", "sql": last_sql,
         "grounded": r.grounded, "ungrounded": r.ungrounded, "steps": [s.model_dump() for s in r.steps],
         "results": [{**x, "rows": x["rows"][:50]} for x in r.results], "chart": r.chart,
         "provenance": r.provenance, "stopped": r.stopped, "seconds": r.seconds})
 
 
-def _chat(wid: str, req: ChatRequest, on_step=None, route: str | None = None, context: str = "") -> dict:
+def _chat(wid: str, req: ChatRequest, on_step=None, route: str | None = None, context: str = "",
+          pid: str | None = None) -> dict:
     """Bare cell ids get the rule-based cell card; with no model, the rules answer. With a model, questions about the
     data go to the agent over the catalog (sheetir.agent), questions about structure and issues to the IR-grounded
     Q&A (sheetir.understand.ask). If the model path fails, the rules answer and `fallback` says why. `route`: the
@@ -826,8 +853,9 @@ def _chat(wid: str, req: ChatRequest, on_step=None, route: str | None = None, co
         h = _catalog(wid)
         if route is None:
             route = _route(req.message, llm, h) if h is not None and h.cards else "ir"
-        if route == "data" and h is not None and h.cards:
-            return _agent_reply(req.message, h, llm, req.lang, on_step, context)
+        if route in ("data", "what_if") and h is not None and h.cards:
+            return _agent_reply(req.message, h, llm, req.lang, on_step, context,
+                                _whatif_tools(pid, [wid], req.message))
         r = ask(con, req.message, llm, req.lang, project_context=context)
     except Exception as e:  # any failure of the model path: the user still gets an answer, and the reason
         log.exception("LLM chat failed; answering with the rules")
@@ -895,7 +923,7 @@ def _project_answer(pid: str, req: ProjectChatRequest, on_step, context: str) ->
     if len(members) <= 1 or llm is None:
         if focus is None:
             raise HTTPException(400, "this project has no parsed workbook to answer from")
-        return {**_chat(focus, req, on_step, context=context), "workbook": focus}
+        return {**_chat(focus, req, on_step, context=context, pid=pid), "workbook": focus}
     if focus is not None:
         con = _connect(focus)
         try:
@@ -906,15 +934,16 @@ def _project_answer(pid: str, req: ProjectChatRequest, on_step, context: str) ->
     cat = ProjectCatalog(members)
     try:
         route = _route(req.message, llm, cat)
-        if route == "data" or focus is None:
-            return _agent_reply(req.message, cat, llm, req.lang, on_step, context)
+        if route in ("data", "what_if") or focus is None:
+            wids = ([focus] if focus else []) + [m[0] for m in members]
+            return _agent_reply(req.message, cat, llm, req.lang, on_step, context, _whatif_tools(pid, wids, req.message))
     except Exception as e:  # noqa: BLE001 - as in _chat: the file in view still gets an answer, and the reason
         log.exception("project agent failed; answering about the workbook in view")
         if focus is None:
             raise
         return {**_chat(focus, req, on_step, route="ir", context=context), "workbook": focus,
                 "fallback": f"{type(e).__name__}: {e}"[:300]}
-    return {**_chat(focus, req, on_step, route=route, context=context), "workbook": focus}
+    return {**_chat(focus, req, on_step, route=route, context=context, pid=pid), "workbook": focus}
 
 
 # ---- project knowledge: instructions and documents --------------------------------------------------------------------
@@ -1019,6 +1048,31 @@ def chart_data(wid: str):
     return charts(_connect(wid))
 
 
+class TwinRequest(BaseModel):
+    scenarios: int = 10
+    seed: int = 0
+    v2: bool = True
+
+
+@app.get("/api/workbooks/{wid}/twin")
+def get_twin(wid: str):
+    """The Python twin's last check (translation coverage, V1 vs Excel, V2 vs pycel, per-group results), or
+    {"status": "not_run"} if it was never checked."""
+    return stored_twin(_db_path(wid)) or {"status": "not_run"}
+
+
+@app.post("/api/workbooks/{wid}/twin")
+def run_twin(wid: str, req: TwinRequest | None = None):
+    """Translate the workbook's formulas to Python and verify them; the result is kept in ir.db, and the twin as
+    twin.py next to it (downloadable from the exports)."""
+    req = req or TwinRequest()
+    db = _db_path(wid)
+    src = provenance.source_file(db.parent)
+    check_twin(db, src, v2=req.v2, scenarios=max(0, min(req.scenarios, 100)), seed=req.seed)
+    (db.parent / "twin.py").write_text(export_module(db), encoding="utf-8")
+    return stored_twin(db)
+
+
 # Files derived from the workbook. CSV/JSON exports are generated on request from ir.db.
 EXPORTS = {
     "ir.db": ("SheetIR 資料庫", "SQLite", "application/vnd.sqlite3"),
@@ -1061,6 +1115,10 @@ def list_exports(wid: str, lang: str = "zh"):
     for name, (label, fmt, _) in EXPORTS.items():
         size = db.stat().st_size if name == "ir.db" else len(_export_bytes(wid, name, lang))
         out.append({"name": name, "label": label, "format": fmt, "size": size, "source": False})
+    twin = db.parent / "twin.py"
+    if twin.exists() and twin.stat().st_mtime >= db.stat().st_mtime - 1:  # written by the last twin check
+        out.append({"name": "twin.py", "label": "Python 分身", "format": "Python", "size": twin.stat().st_size,
+                    "source": False})
     return out
 
 
@@ -1072,6 +1130,11 @@ def download_export(wid: str, name: str, lang: str = "zh", inline: bool = False)
     stem = Path(dict(_connect(wid).execute("SELECT key, value FROM meta").fetchall())["source"]).stem
     if name == "ir.db":
         return FileResponse(db, media_type=EXPORTS[name][2], filename=f"{stem}.{wid}.sheetir.db")
+    if name == "twin.py":
+        if not (db.parent / "twin.py").exists():
+            raise HTTPException(404, "the twin has not been built yet: POST /api/workbooks/{id}/twin")
+        return FileResponse(db.parent / "twin.py", media_type="text/x-python; charset=utf-8",
+                            filename=f"{stem}.{wid}.twin.py")
     if name in EXPORTS:
         filename = f"{stem}.{wid}.{name}"
         if name in REPORTS and lang == "en":
@@ -1084,6 +1147,9 @@ def download_export(wid: str, name: str, lang: str = "zh", inline: bool = False)
         return FileResponse(src, filename=src.name)
     raise HTTPException(404, "no such export")
 
+
+# The twin compute engine and the project history (what-if, sensitivity, goal seek, corrections): history_api.py.
+app.include_router(history_router)
 
 # Registered last so the API routes above take precedence over the static mount.
 if (CHAT_UI / "index.html").exists():

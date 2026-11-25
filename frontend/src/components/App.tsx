@@ -10,6 +10,7 @@ import { IssuesView } from "@/components/IssuesView";
 import { QueryView } from "@/components/QueryView";
 import { ResolveDialog, type ResolveTarget } from "@/components/ResolveDialog";
 import { StructureView } from "@/components/StructureView";
+import { TwinView } from "@/components/TwinView";
 import { Sidebar, type View } from "@/components/Sidebar";
 import { KnowledgePanel } from "@/components/KnowledgePanel";
 import { ProjectSwitcher, type ProjectControls } from "@/components/ProjectMenu";
@@ -67,6 +68,7 @@ function Shell() {
   const [notice, setNotice] = useState<{ text: string; report?: boolean; download?: string } | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [resolving, setResolving] = useState<ResolveTarget | null>(null);
+  const [twinRef, setTwinRef] = useState<string | null>(null); // a history record to open in the twin view
 
   const refresh = useCallback(
     (select?: string): Promise<Workbook[]> =>
@@ -104,6 +106,16 @@ function Shell() {
     api.knowledge(pid).then((data) => live && setFetchedKnowledge({ pid, data }), () => {});
     return () => { live = false; };
   }, [pid]);
+  // Corrections waiting for approval in this project (the twin view's badge), counted again when the history changes.
+  const [pendingFor, setPendingFor] = useState<{ pid: string; n: number } | null>(null);
+  const [historyTick, setHistoryTick] = useState(0);
+  useEffect(() => {
+    if (!pid) return;
+    let live = true;
+    api.history(pid, { status: "pending" }).then((d) => live && setPendingFor({ pid, n: d.records.length }), () => {});
+    return () => { live = false; };
+  }, [pid, historyTick]);
+  const pendingCount = pendingFor && pendingFor.pid === pid ? pendingFor.n : 0;
   const knowledgeData = fetchedKnowledge && fetchedKnowledge.pid === pid ? fetchedKnowledge.data : null;
   const knowledge = {
     summary: t.knowledge.summary(!!knowledgeData?.instructions, knowledgeData?.docs.length ?? 0),
@@ -223,6 +235,7 @@ function Shell() {
       const [res] = await Promise.all([stream, new Promise((r) => setTimeout(r, 450))]);
       const { reply, cells, ...meta } = res;
       push({ id: uid(), role: "assistant", content: reply, cells, meta, workbook: res.workbook ?? wid });
+      if (res.records?.length) setHistoryTick((n) => n + 1);
     } catch (e) {
       push({ id: uid(), role: "assistant", content: t.app.error((e as Error).message), error: true });
     } finally {
@@ -245,6 +258,7 @@ function Shell() {
         activeId={activeId}
         panel={panel}
         view={view}
+        pending={pendingCount}
         onView={(v) => { setView(v); setPanel(null); }}
         onSelect={selectWorkbook}
         onRemove={remove}
@@ -335,6 +349,17 @@ function Shell() {
           />
         ) : view === "charts" ? (
           <ChartsView workbookId={activeId} workbookName={summary?.name} />
+        ) : view === "twin" ? (
+          <TwinView
+            projectId={project?.id ?? null}
+            workbookId={activeId}
+            versions={inProject.filter((w) => w.name.toLowerCase() === activeWorkbook?.name.toLowerCase())}
+            openRef={twinRef}
+            onOpened={() => setTwinRef(null)}
+            onOpenCell={(cell) => { setSheetFocus(cell); setView("sheets"); }}
+            onNewVersion={async (id) => { await refresh(id); setNotice(null); }}
+            onHistoryChanged={() => setHistoryTick((n) => n + 1)}
+          />
         ) : view === "graph" ? (
           <GraphView
             workbookId={activeId}
@@ -360,6 +385,7 @@ function Shell() {
             } : undefined}
             onNavigate={(to) => (to === "exports" ? setPanel("exports") : setView(to))}
             onShowReport={() => setReportOpen(true)}
+            onOpenRecord={(ref) => { setTwinRef(ref); setView("twin"); }}
           />
         )}
       </main>

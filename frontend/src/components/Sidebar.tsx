@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  BookOpen, ChartPie, ChevronRight, Database, FilePlus2, FileSpreadsheet, FolderInput, FolderOutput, Grid3x3, Languages,
+  BookOpen, ChartPie, ChevronRight, Database, FilePlus2, FileSpreadsheet, FolderInput, FolderOutput, GitBranch, Grid3x3, Languages,
   ListChecks, MessageSquareText, Moon, Network, Plus, Sun, Search, Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -14,7 +14,7 @@ import { StatusBadge } from "@/components/ParseStatus";
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/lib/theme";
 
-export type View = "chat" | "sheets" | "issues" | "query" | "graph" | "charts";
+export type View = "chat" | "sheets" | "issues" | "query" | "graph" | "charts" | "twin";
 
 /** A small menu of the other projects, to move a workbook there. */
 function MoveMenu({ projects, current, onMove }: { projects: Project[]; current: string; onMove: (to: string) => void }) {
@@ -63,14 +63,16 @@ type Props = ProjectControls & {
   onNewData: () => void;
   onToggleExports: () => void;
   onRemove: (id: string) => void;
+  /** Corrections in the project waiting for approval (a badge on the twin view's button). */
+  pending?: number;
 };
 
 // On short screens the rail drops its text labels so every button still fits.
 const SHORT_SCREEN_HIDE = "[@media(max-height:680px)]:hidden";
 
 function RailButton({
-  label, short, active, onClick, children, accent,
-}: { label: string; short?: string; active?: boolean; onClick: () => void; children: React.ReactNode; accent?: boolean }) {
+  label, short, active, onClick, children, accent, badge,
+}: { label: string; short?: string; active?: boolean; onClick: () => void; children: React.ReactNode; accent?: boolean; badge?: number }) {
   return (
     <button
       onClick={onClick}
@@ -89,6 +91,9 @@ function RailButton({
         <span className="absolute -left-[2px] top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-blue-500 sm:-left-[4px] [@media(max-height:680px)]:hidden" />
       )}
       {children}
+      {!!badge && (
+        <span aria-hidden className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-amber-400 px-1 text-[10px] font-semibold leading-4 text-black">{badge}</span>
+      )}
       {short && (
         <span aria-hidden className={`max-w-full truncate px-0.5 text-[11px] leading-none font-medium ${SHORT_SCREEN_HIDE}`}>{short}</span>
       )}
@@ -99,7 +104,7 @@ function RailButton({
   );
 }
 
-export function Sidebar({ knowledge, workbooks, activeId, panel, view, onView, onSelect, onNewData, onToggleExports, onRemove, ...pc }: Props) {
+export function Sidebar({ knowledge, workbooks, activeId, panel, view, onView, onSelect, onNewData, onToggleExports, onRemove, pending = 0, ...pc }: Props) {
   const { t, lang, setLang } = useI18n();
   const [theme, toggleTheme] = useTheme();
   const [query, setQuery] = useState("");
@@ -150,6 +155,10 @@ export function Sidebar({ knowledge, workbooks, activeId, panel, view, onView, o
         </RailButton>
         <RailButton label={t.nav.charts} short={t.navShort.charts} onClick={() => onView("charts")} active={view === "charts" && !panel}>
           <ChartPie className="size-5" />
+        </RailButton>
+        <RailButton label={pending ? `${t.nav.twin} · ${t.twin.history.pending(pending)}` : t.nav.twin} short={t.navShort.twin}
+          onClick={() => onView("twin")} active={view === "twin" && !panel} badge={pending}>
+          <GitBranch className="size-5" />
         </RailButton>
         <div className="mt-auto flex flex-col gap-2">
           <RailButton label={theme === "light" ? t.nav.toDark : t.nav.toLight} onClick={toggleTheme}>
