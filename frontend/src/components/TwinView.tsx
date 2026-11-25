@@ -4,11 +4,13 @@ import {
   Bot, Check, ChevronDown, ChevronRight, CircleAlert, Download, FlaskConical, GitBranch, GitCompare, History, Loader2,
   Play, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Target, Undo2, Waypoints, X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api, type CompareResult, type CellChange, type GoalSeekResult, type HistoryRecord, type ModelCell, type ModelCells,
   type ScenarioResult, type SensitivityResult, type TwinCheck, type Workbook,
 } from "@/lib/api";
+import { useDialogFocus } from "@/lib/dialog-focus";
 import { useI18n } from "@/lib/i18n";
 
 export type TwinTab = "verify" | "whatif" | "sensitivity" | "goal" | "history";
@@ -105,13 +107,88 @@ function ErrorLine({ text }: { text: string | null }) {
   return <p role="alert" className="mt-3 flex items-start gap-1.5 rounded-md bg-rose-500/10 px-3 py-2 text-xs text-rose-200"><CircleAlert className="mt-px size-3.5 shrink-0" />{text}</p>;
 }
 
-const btn = "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50";
-const btnPrimary = `${btn} bg-blue-600 text-white hover:bg-blue-500`;
-const btnGhost = `${btn} bg-white/5 text-zinc-200 ring-1 ring-white/10 hover:bg-white/10`;
+// Buttons. Text on solid accent buttons is `snow`, which stays white in both themes (`white` turns to ink in light mode).
+const focus = "outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 focus-visible:ring-offset-0";
+const btn = `inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${focus}`;
+const btnPrimary = `${btn} bg-blue-600 text-snow shadow-sm hover:bg-blue-500 active:bg-blue-700`;
+const btnDanger = `${btn} bg-rose-600 text-snow shadow-sm hover:bg-rose-500 active:bg-rose-700`;
+const btnGhost = `${btn} bg-white/5 text-zinc-200 ring-1 ring-white/10 hover:bg-white/10 hover:text-white active:bg-white/[0.14]`;
+const btnQuiet = `${btn} text-zinc-400 hover:bg-white/5 hover:text-white`;
+const btnLink = `inline-flex items-center gap-1 rounded text-xs font-medium text-blue-300 underline-offset-2 transition hover:text-blue-200 hover:underline disabled:opacity-50 ${focus}`;
 const input = "rounded-md border border-white/10 bg-black/20 px-2.5 py-1.5 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-blue-400/50";
 const card = "rounded-lg border border-white/[0.07] bg-surface/90 p-4";
 const th = "px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-zinc-500";
 const td = "px-3 py-1.5 align-top";
+
+/** A dialog over the page (the app's own pattern: a dimmed backdrop, focus kept inside, Escape and a click outside close
+ * it unless `busy`). */
+function Modal({ open, title, onClose, busy, wide, children }: {
+  open: boolean; title: React.ReactNode; onClose: () => void; busy?: boolean; wide?: boolean; children: React.ReactNode;
+}) {
+  const { t } = useI18n();
+  const box = useDialogFocus<HTMLDivElement>(open);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy, onClose]);
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={() => !busy && onClose()}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <motion.div ref={box} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+            initial={{ opacity: 0, scale: 0.96, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: 6 }}
+            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+            className={`field flex max-h-[85vh] w-full flex-col rounded-xl bg-zinc-950/95 shadow-2xl ${wide ? "max-w-3xl" : "max-w-md"}`}>
+            <div className="flex items-start gap-3 border-b border-white/[0.07] px-5 py-4">
+              <h3 className="min-w-0 flex-1 text-sm font-semibold text-white">{title}</h3>
+              <button onClick={onClose} disabled={busy} aria-label={t.app.close} className={`${btnQuiet} -mr-2 -mt-1 px-1.5`}><X className="size-4" /></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/** Ask before an action that changes the data or the history; `note` adds a text box (required when it says so). */
+function ConfirmDialog({ open, title, body, confirm, tone = "primary", note, onConfirm, onClose }: {
+  open: boolean; title: string; body?: React.ReactNode; confirm: string; tone?: "primary" | "danger";
+  note?: { placeholder: string; required?: boolean };
+  /** Runs the action; a thrown error is shown in the dialog, which stays open. */
+  onConfirm: (note: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const close = () => { setText(""); setError(null); onClose(); };
+  async function go() {
+    setBusy(true); setError(null);
+    try { await onConfirm(text.trim()); setText(""); onClose(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <Modal open={open} title={title} onClose={close} busy={busy}>
+      {body && <div className="text-sm leading-relaxed text-zinc-300">{body}</div>}
+      {note && (
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={note.placeholder} autoFocus
+          className={`${input} mt-3 w-full resize-y text-sm`} />
+      )}
+      <ErrorLine text={error} />
+      <div className="mt-4 flex justify-end gap-2">
+        <button onClick={close} disabled={busy} className={btnGhost}>{t.twin.history.cancel}</button>
+        <button onClick={go} disabled={busy || (!!note?.required && !text.trim())} className={tone === "danger" ? btnDanger : btnPrimary}>
+          {busy && <Loader2 className="size-3.5 animate-spin" />}{confirm}
+        </button>
+      </div>
+    </Modal>
+  );
+}
 
 export function TwinView({ projectId, workbookId, versions, openRef, onOpened, onOpenCell, onNewVersion, onHistoryChanged }: Props) {
   const { t } = useI18n();
@@ -156,7 +233,7 @@ export function TwinView({ projectId, workbookId, versions, openRef, onOpened, o
         <div role="tablist" className="mt-4 flex flex-wrap gap-1 border-b border-white/[0.07]">
           {TABS.map(({ key, icon: Icon }) => (
             <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
-              className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm transition ${tab === key ? "border-blue-400 text-white" : "border-transparent text-zinc-400 hover:text-zinc-200"}`}>
+              className={`-mb-px flex items-center gap-1.5 rounded-t-md border-b-2 px-3 py-2 text-sm transition ${focus} ${tab === key ? "border-blue-400 text-white" : "border-transparent text-zinc-400 hover:text-zinc-200"}`}>
               <Icon className="size-4" />{s.tabs[key]}
             </button>
           ))}
@@ -312,7 +389,7 @@ function VerifyTab({ workbookId, onOpenCell }: { workbookId: string; onOpenCell:
                 {data.mismatches.slice(0, 50).map((m, i) => (
                   <tr key={i} className="border-t border-white/[0.05]">
                     <td className={`${td} text-zinc-400`}>{m.level.toUpperCase()}{m.scenario !== null ? ` #${m.scenario}` : ""}</td>
-                    <td className={td}><button onClick={() => onOpenCell(m.cell_id)} className="font-mono text-blue-300 hover:underline">{m.cell_id}</button></td>
+                    <td className={td}><button onClick={() => onOpenCell(m.cell_id)} className={`${btnLink} font-mono`}>{m.cell_id}</button></td>
                     <td className={`${td} font-mono text-zinc-200`}>{m.expected}</td>
                     <td className={`${td} font-mono text-rose-200`}>{m.got}</td>
                   </tr>
@@ -338,7 +415,7 @@ function VerifyTab({ workbookId, onOpenCell }: { workbookId: string; onOpenCell:
                   {groups.slice(0, 200).map((g) => (
                     <tr key={g.group_id} className="border-t border-white/[0.05]">
                       <td className={td}>
-                        <button onClick={() => onOpenCell(g.anchor)} className="font-mono text-blue-300 hover:underline">{g.anchor}</button>
+                        <button onClick={() => onOpenCell(g.anchor)} className={`${btnLink} font-mono`}>{g.anchor}</button>
                         {g.last !== g.anchor && <span className="font-mono text-zinc-500">:{g.last.split("!").pop()}</span>}
                         {g.semantic && <span className="block text-[11px] text-zinc-500">{g.semantic}</span>}
                       </td>
@@ -425,7 +502,7 @@ function ChangeTable({ rows, onOpenCell, empty }: { rows: CellChange[]; onOpenCe
         <tbody>
           {rows.map((r) => (
             <tr key={r.cell} className="border-t border-white/[0.05]">
-              <td className={td}><button onClick={() => onOpenCell(r.cell)} className="font-mono text-blue-300 hover:underline">{r.cell}</button></td>
+              <td className={td}><button onClick={() => onOpenCell(r.cell)} className={`${btnLink} font-mono`}>{r.cell}</button></td>
               <td className={`${td} text-zinc-300`} title={r.label ?? ""}><span className="block max-w-[9rem] truncate 2xl:max-w-[14rem]">{r.label}</span></td>
               <td className={`${td} text-right tabular-nums text-zinc-400`}>{fmtValue(r.base)}</td>
               <td className={`${td} text-right tabular-nums font-medium text-white`}>{fmtValue(r.value)}</td>
@@ -467,6 +544,7 @@ function WhatIfTab({ pid, wid, by, draft, setDraft, isLatest, onOpenCell, onHist
   const [savedRef, setSavedRef] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [proposing, setProposing] = useState(false);
+  const [proposed, setProposed] = useState<string | null>(null);
 
   // A continued record from another file version cannot continue here: start from the stored data.
   const parent = draft.parent && draft.parent.workbook === wid ? draft.parent : null;
@@ -516,14 +594,14 @@ function WhatIfTab({ pid, wid, by, draft, setDraft, isLatest, onOpenCell, onHist
           {[...extra.map((c) => ({ cell: c, label: null, value: undefined, status: "input", number: true }) as ModelCell), ...listed].map((c) => (
             <li key={c.cell} className={`rounded-md px-2.5 py-2 ring-1 ${c.cell in values ? "bg-blue-500/[0.08] ring-blue-400/30" : "bg-white/[0.02] ring-white/[0.06]"}`}>
               <div className="flex items-baseline gap-2">
-                <button onClick={() => onOpenCell(c.cell)} className="font-mono text-xs text-blue-300 hover:underline">{c.cell}</button>
+                <button onClick={() => onOpenCell(c.cell)} className={`${btnLink} font-mono`}>{c.cell}</button>
                 <span className="min-w-0 flex-1 truncate text-xs text-zinc-300" title={c.label ?? ""}>{c.label}</span>
               </div>
               <div className="mt-1.5 flex items-center gap-2">
                 <span className="w-24 shrink-0 truncate text-xs tabular-nums text-zinc-500" title={w.current}>{c.value === undefined ? "" : fmtValue(c.value)}</span>
                 <input value={values[c.cell] ?? ""} onChange={(e) => set(c.cell, e.target.value)} placeholder={w.newValue}
                   aria-label={`${c.cell} ${w.newValue}`} className={`${input} min-w-0 flex-1 py-1 text-xs tabular-nums`} />
-                {c.cell in values && <button onClick={() => set(c.cell, "")} aria-label={w.clear} className="text-zinc-500 hover:text-white"><X className="size-3.5" /></button>}
+                {c.cell in values && <button onClick={() => set(c.cell, "")} aria-label={w.clear} className={`${btnQuiet} px-1 py-1`}><X className="size-3.5" /></button>}
               </div>
             </li>
           ))}
@@ -537,7 +615,7 @@ function WhatIfTab({ pid, wid, by, draft, setDraft, isLatest, onOpenCell, onHist
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md bg-blue-500/[0.07] px-3 py-2 text-xs text-blue-100 ring-1 ring-blue-400/20">
             <GitBranch className="size-3.5" />{w.continueFrom(draft.parent.ref)}
             {draft.parent.note && <span className="truncate text-blue-200/70">· {draft.parent.note}</span>}
-            <button onClick={() => setDraft({ values, parent: null })} className="ml-auto text-blue-200/80 underline hover:text-white">{w.stopContinue}</button>
+            <button onClick={() => setDraft({ values, parent: null })} className={`${btnLink} ml-auto`}>{w.stopContinue}</button>
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2">
@@ -549,17 +627,24 @@ function WhatIfTab({ pid, wid, by, draft, setDraft, isLatest, onOpenCell, onHist
           <button onClick={() => run(true)} disabled={!!busy || (!changes.length && !parent)} className={btnPrimary}>
             {busy === "save" ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}{w.save}
           </button>
-          {changes.length > 0 && <button onClick={() => { setDraft({ values: {}, parent: null }); setResult(null); setSavedRef(null); }} className="text-xs text-zinc-400 hover:text-white">{w.clear}</button>}
+          {changes.length > 0 && <button onClick={() => { setDraft({ values: {}, parent: null }); setResult(null); setSavedRef(null); }} className={btnQuiet}><X className="size-3.5" />{w.clear}</button>}
         </div>
         <ErrorLine text={error} />
         {savedRef && (
           <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md bg-emerald-400/[0.07] px-3 py-2 text-xs text-emerald-100 ring-1 ring-emerald-400/20">
             <Check className="size-3.5" />{w.saved(savedRef)}
-            {isLatest && !proposing && <button onClick={() => setProposing(true)} className="ml-auto underline hover:text-white">{w.propose}</button>}
+            {isLatest && <button onClick={() => setProposing(true)} className={`${btnGhost} ml-auto py-1`}><Check className="size-3.5" />{w.propose}</button>}
           </div>
         )}
-        {proposing && savedRef && (
-          <ProposeForm pid={pid} wid={wid} by={by} fromScenario={savedRef} onDone={() => { setProposing(false); onHistoryChanged(); }} onCancel={() => setProposing(false)} />
+        {proposed && <p className="mt-3 rounded-md bg-amber-400/[0.07] px-3 py-2 text-xs text-amber-100 ring-1 ring-amber-300/20">{t.twin.history.proposed(proposed)}</p>}
+        {savedRef && (
+          <ConfirmDialog open={proposing} title={`${t.twin.history.proposeTitle}（${savedRef}）`} body={t.twin.history.proposeBody}
+            confirm={t.twin.history.propose} note={{ placeholder: t.twin.history.proposeReason, required: true }}
+            onClose={() => setProposing(false)}
+            onConfirm={async (reason) => {
+              const rec = await api.propose(pid, { workbook: wid, from_scenario: savedRef, reason, by });
+              setProposed(rec.ref); onHistoryChanged();
+            }} />
         )}
 
         {!result ? (
@@ -581,34 +666,6 @@ function WhatIfTab({ pid, wid, by, draft, setDraft, isLatest, onOpenCell, onHist
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-function ProposeForm({ pid, wid, by, fromScenario, onDone, onCancel }: {
-  pid: string; wid: string; by?: string; fromScenario: string; onDone: () => void; onCancel: () => void;
-}) {
-  const { t } = useI18n();
-  const h = t.twin.history;
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  async function submit() {
-    setBusy(true); setError(null);
-    try { const rec = await api.propose(pid, { workbook: wid, from_scenario: fromScenario, reason, by }); setDone(rec.ref); onDone(); }
-    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
-  }
-  if (done) return <p className="mt-3 rounded-md bg-amber-400/[0.07] px-3 py-2 text-xs text-amber-100 ring-1 ring-amber-300/20">{h.proposed(done)}</p>;
-  return (
-    <div className="mt-3 rounded-md border border-white/10 bg-white/[0.02] p-3">
-      <p className="text-xs font-medium text-zinc-200">{h.proposeTitle} ({fromScenario})</p>
-      <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={h.proposeReason} rows={2} className={`${input} mt-2 w-full text-xs`} />
-      <div className="mt-2 flex justify-end gap-2">
-        <button onClick={onCancel} className="rounded-md px-2.5 py-1 text-xs text-zinc-300 hover:bg-white/10">{h.cancel}</button>
-        <button onClick={submit} disabled={busy || !reason.trim()} className={btnPrimary}>{busy && <Loader2 className="size-3.5 animate-spin" />}{h.propose}</button>
-      </div>
-      <ErrorLine text={error} />
     </div>
   );
 }
@@ -679,7 +736,7 @@ function SensitivityResultView({ ref_, result: r, onOpenCell }: { ref_?: string;
               return (
                 <li key={x.cell} className="grid grid-cols-[minmax(0,12rem)_1fr_auto] items-center gap-3 text-xs">
                   <span className="min-w-0 truncate" title={x.label ?? x.cell}>
-                    <button onClick={() => onOpenCell(x.cell)} className="font-mono text-blue-300 hover:underline">{x.cell}</button>
+                    <button onClick={() => onOpenCell(x.cell)} className={`${btnLink} font-mono`}>{x.cell}</button>
                     {x.label && <span className="ml-1.5 text-zinc-400">{x.label}</span>}
                   </span>
                   <span className="relative h-5 rounded bg-white/[0.03]">
@@ -770,11 +827,11 @@ function GoalTab({ pid, wid, by, onOpenCell, onUse, onHistoryChanged }: {
           <p className="mt-3 text-lg font-semibold text-white">{g.answer(r.changing.cell, fmtValue(r.changing.value))}</p>
           <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
             <div className="rounded-md bg-white/[0.03] px-3 py-2">
-              <dt className="text-xs text-zinc-500"><button onClick={() => onOpenCell(r.changing.cell)} className="font-mono text-blue-300 hover:underline">{r.changing.cell}</button> {r.changing.label}</dt>
+              <dt className="text-xs text-zinc-500"><button onClick={() => onOpenCell(r.changing.cell)} className={`${btnLink} font-mono`}>{r.changing.cell}</button> {r.changing.label}</dt>
               <dd className="mt-0.5 tabular-nums text-zinc-200">{g.before} {fmtValue(r.changing.before)} → <span className="font-medium text-white">{fmtValue(r.changing.value)}</span></dd>
             </div>
             <div className="rounded-md bg-white/[0.03] px-3 py-2">
-              <dt className="text-xs text-zinc-500"><button onClick={() => onOpenCell(r.target.cell)} className="font-mono text-blue-300 hover:underline">{r.target.cell}</button> {r.target.label}</dt>
+              <dt className="text-xs text-zinc-500"><button onClick={() => onOpenCell(r.target.cell)} className={`${btnLink} font-mono`}>{r.target.cell}</button> {r.target.label}</dt>
               <dd className="mt-0.5 tabular-nums text-zinc-200">{g.before} {fmtValue(r.target.before)} → {g.achieved} <span className="font-medium text-white">{fmtValue(r.target.achieved)}</span></dd>
             </div>
           </dl>
@@ -788,6 +845,8 @@ function GoalTab({ pid, wid, by, onOpenCell, onUse, onHistoryChanged }: {
 
 // ---- History and corrections ----------------------------------------------------------------------------------------
 
+const ANALYSES = new Set(["scenario", "sensitivity", "goal_seek"]);
+
 function HistoryTab({ pid, wid, versions, latest, by, openRef, onOpened, onOpenCell, onContinue, onNewVersion, onHistoryChanged }: {
   pid: string; wid: string; versions: Workbook[]; latest?: Workbook; by?: string; openRef: string | null; onOpened?: () => void;
   onOpenCell: (cell: string) => void; onContinue: (rec: HistoryRecord) => void; onNewVersion: (id: string) => Promise<void>;
@@ -800,8 +859,7 @@ function HistoryTab({ pid, wid, versions, latest, by, openRef, onOpened, onOpenC
   const [kind, setKind] = useState<string | null>(null);
   const [onlyFile, setOnlyFile] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
-  const [compareA, setCompareA] = useState<string | null>(null);
-  const [comparison, setComparison] = useState<CompareResult | null>(null);
+  const [comparing, setComparing] = useState<HistoryRecord | null>(null);
   const [reloads, setReloads] = useState(0);
   const fileIds = useMemo(() => new Set(versions.map((v) => v.id)), [versions]);
   const versionOf = useCallback((id: string) => versions.find((v) => v.id === id), [versions]);
@@ -812,6 +870,7 @@ function HistoryTab({ pid, wid, versions, latest, by, openRef, onOpened, onOpenC
     return () => { live = false; };
   }, [pid, reloads]);
 
+  // A record to show (from a chat answer): open it, whatever the filters (state adjusted while rendering).
   const [seenRef, setSeenRef] = useState<string | null>(null);
   if (openRef !== seenRef) {
     setSeenRef(openRef);
@@ -823,41 +882,35 @@ function HistoryTab({ pid, wid, versions, latest, by, openRef, onOpened, onOpenC
 
   const changed = () => { setReloads((n) => n + 1); onHistoryChanged(); };
 
-  async function pickCompare(ref: string) {
-    if (!compareA || compareA === ref) { setCompareA(ref); setComparison(null); return; }
-    try { setComparison(await api.compare(pid, compareA, ref)); } catch (e) { setError((e as Error).message); }
-    setCompareA(null);
-  }
-
   if (!records) return error ? <ErrorLine text={error} /> : <Loader2 className="size-5 animate-spin text-zinc-500" />;
 
   const pending = records.filter((r) => r.status === "pending");
-  const shown = records.filter((r) => (!kind || (kind === "corrections" ? r.kind === "correction" || r.kind === "revert" : kind === "pending" ? r.status === "pending" : r.kind === kind))
-    && (!onlyFile || fileIds.has(r.workbook) || r.ref === open));
+  const matches = (r: HistoryRecord) =>
+    !kind || (kind === "corrections" ? !ANALYSES.has(r.kind) : kind === "pending" ? r.status === "pending" : r.kind === kind);
+  const shown = records.filter((r) => matches(r) && (!onlyFile || fileIds.has(r.workbook) || r.ref === open));
   const kinds = ["pending", "scenario", "sensitivity", "goal_seek", "corrections"];
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
       <section className="min-w-0">
-        {pending.length > 0 && (
-          <button onClick={() => setKind("pending")} className="mb-3 flex w-full items-center gap-2 rounded-md bg-amber-400/[0.08] px-3 py-2 text-left text-sm text-amber-100 ring-1 ring-amber-300/25 hover:bg-amber-400/[0.12]">
-            <CircleAlert className="size-4" />{h.pending(pending.length)}
+        {pending.length > 0 && kind !== "pending" && (
+          <button onClick={() => setKind("pending")}
+            className={`mb-3 flex w-full items-center gap-2 rounded-md bg-amber-400/[0.08] px-3 py-2 text-left text-sm text-amber-100 ring-1 ring-amber-300/25 transition hover:bg-amber-400/[0.14] ${focus}`}>
+            <CircleAlert className="size-4" />{h.pending(pending.length)}<ChevronRight className="ml-auto size-4" />
           </button>
         )}
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5" role="group">
           {[null, ...kinds].map((k) => (
-            <button key={k ?? "all"} onClick={() => setKind(k)}
-              className={`rounded-full border px-2.5 py-1 text-xs transition ${kind === k ? "border-blue-400/50 bg-blue-500/15 text-white" : "border-white/10 text-zinc-300 hover:bg-white/5"}`}>
-              {k === null ? h.all : k === "pending" ? h.states.pending : k === "corrections" ? h.kinds.correction : h.kinds[k]}
+            <button key={k ?? "all"} onClick={() => setKind(k)} aria-pressed={kind === k}
+              className={`rounded-full border px-2.5 py-1 text-xs transition ${focus} ${kind === k ? "border-blue-400/50 bg-blue-500/15 text-white" : "border-white/10 text-zinc-300 hover:border-white/20 hover:bg-white/5 hover:text-white"}`}>
+              {k === null ? h.all : k === "pending" ? `${h.states.pending}${pending.length ? ` ${pending.length}` : ""}` : k === "corrections" ? h.kinds.correction : h.kinds[k]}
             </button>
           ))}
-          <label className="ml-auto flex items-center gap-1.5 text-xs text-zinc-400">
+          <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200">
             <input type="checkbox" checked={onlyFile} onChange={(e) => setOnlyFile(e.target.checked)} className="accent-blue-500" />{h.thisFile}
           </label>
         </div>
         <ErrorLine text={error} />
-        {compareA && <p className="mt-3 flex items-center gap-1.5 text-xs text-blue-200"><GitCompare className="size-3.5" />{h.compareWith} ({compareA}) <button onClick={() => setCompareA(null)} className="underline">{h.cancel}</button></p>}
-        {comparison && <ComparePanel data={comparison} onClose={() => setComparison(null)} onOpenCell={onOpenCell} />}
 
         {shown.length === 0 ? (
           <p className="mt-8 text-center text-sm text-zinc-500">{h.empty}</p>
@@ -865,8 +918,8 @@ function HistoryTab({ pid, wid, versions, latest, by, openRef, onOpened, onOpenC
           <ul className="mt-3 space-y-1.5">
             {shown.map((r) => (
               <RecordRow key={r.ref} pid={pid} rec={r} open={open === r.ref} onToggle={() => setOpen(open === r.ref ? null : r.ref)}
-                version={versionOf(r.workbook)} currentId={wid} latest={latest} by={by} comparing={compareA}
-                onCompare={() => pickCompare(r.ref)} onContinue={onContinue} onOpenCell={onOpenCell}
+                version={versionOf(r.workbook)} currentId={wid} latest={latest} by={by}
+                onCompare={() => setComparing(r)} onContinue={onContinue} onOpenCell={onOpenCell}
                 onChanged={changed} onNewVersion={onNewVersion} />
             ))}
           </ul>
@@ -874,6 +927,8 @@ function HistoryTab({ pid, wid, versions, latest, by, openRef, onOpened, onOpenC
       </section>
 
       <VersionsPanel pid={pid} versions={versions} latest={latest} by={by} onChanged={changed} onOpen={onNewVersion} />
+      <ComparePicker pid={pid} base={comparing} records={records} fileIds={fileIds} versionOf={versionOf}
+        onClose={() => setComparing(null)} onOpenCell={onOpenCell} />
     </div>
   );
 }
@@ -885,9 +940,9 @@ function useSummary() {
   return (r: HistoryRecord): string => {
     const p = r.params ?? {};
     const n = Object.keys(r.changes).length;
-    if (r.kind === "scenario") return m.scenario(n);
-    if (r.kind === "sensitivity") return m.sensitivity(String(p.target), Math.round(Number(p.step ?? 0) * 1000) / 10);
-    if (r.kind === "goal_seek") return m.goal_seek(String(p.target), fmtValue(p.goal), String(p.changing));
+    if (r.kind === "scenario") return r.note || m.scenario(n);
+    if (r.kind === "sensitivity") return r.note || m.sensitivity(String(p.target), Math.round(Number(p.step ?? 0) * 1000) / 10);
+    if (r.kind === "goal_seek") return r.note || m.goal_seek(String(p.target), fmtValue(p.goal), String(p.changing));
     if (r.kind === "revert") return `${m.revert(String(p.to_name ?? p.to))}${p.reason ? ` — ${p.reason}` : ""}`;
     return p.reason ? String(p.reason) : m.correction(n);
   };
@@ -895,47 +950,53 @@ function useSummary() {
 
 const KIND_ICON = { scenario: FlaskConical, sensitivity: Waypoints, goal_seek: Target, correction: Check, revert: Undo2 } as const;
 
-function RecordRow({ pid, rec, open, onToggle, version, currentId, latest, by, comparing, onCompare, onContinue, onOpenCell, onChanged, onNewVersion }: {
+function RecordMeta({ rec, version }: { rec: HistoryRecord; version?: Workbook }) {
+  const { t } = useI18n();
+  const h = t.twin.history;
+  const when = new Date(rec.created).toLocaleString(t.locale, { dateStyle: "short", timeStyle: "short" });
+  return (
+    <span className="block truncate text-[11px] text-zinc-500">
+      {h.kinds[rec.kind]} · {rec.author} · {when}
+      {version ? ` · v${version.version}` : rec.workbook_stored === false ? ` · ${h.gone}` : ` · ${rec.workbook_name ?? rec.workbook}`}
+      {rec.parent ? ` · ${h.parent(`S${rec.parent}`)}` : ""}
+    </span>
+  );
+}
+
+function RecordRow({ pid, rec, open, onToggle, version, currentId, latest, by, onCompare, onContinue, onOpenCell, onChanged, onNewVersion }: {
   pid: string; rec: HistoryRecord; open: boolean; onToggle: () => void; version?: Workbook; currentId: string; latest?: Workbook;
-  by?: string; comparing: string | null; onCompare: () => void; onContinue: (rec: HistoryRecord) => void;
+  by?: string; onCompare: () => void; onContinue: (rec: HistoryRecord) => void;
   onOpenCell: (cell: string) => void; onChanged: () => void; onNewVersion: (id: string) => Promise<void>;
 }) {
   const { t } = useI18n();
   const h = t.twin.history;
   const Icon = KIND_ICON[rec.kind] ?? History;
   const summarize = useSummary();
-  const analysis = rec.kind === "scenario" || rec.kind === "sensitivity" || rec.kind === "goal_seek";
-  const when = new Date(rec.created).toLocaleString(t.locale, { dateStyle: "short", timeStyle: "short" });
   return (
-    <li className={`rounded-md ring-1 ${open ? "bg-white/[0.04] ring-blue-400/30" : rec.status === "pending" ? "bg-amber-400/[0.04] ring-amber-300/20" : "bg-white/[0.02] ring-white/[0.06]"}`}>
-      <button onClick={onToggle} className="flex w-full items-center gap-3 px-3 py-2.5 text-left">
+    <li className={`rounded-md ring-1 transition ${open ? "bg-white/[0.04] ring-blue-400/30" : rec.status === "pending" ? "bg-amber-400/[0.04] ring-amber-300/20 hover:ring-amber-300/40" : "bg-white/[0.02] ring-white/[0.06] hover:ring-white/15"}`}>
+      <button onClick={onToggle} aria-expanded={open} className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left ${focus}`}>
         {open ? <ChevronDown className="size-4 shrink-0 text-zinc-500" /> : <ChevronRight className="size-4 shrink-0 text-zinc-500" />}
         <Icon className="size-4 shrink-0 text-blue-300" />
         <span className="w-10 shrink-0 font-mono text-xs text-zinc-200">{rec.ref}</span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
-            <span className="truncate text-sm text-zinc-100">{analysis ? rec.note || summarize(rec) : summarize(rec)}</span>
+            <span className="truncate text-sm text-zinc-100">{summarize(rec)}</span>
             {rec.source === "agent" && <span title={h.agentNote} className="flex shrink-0 items-center gap-0.5 rounded bg-violet-400/10 px-1.5 text-[11px] text-violet-200 ring-1 ring-violet-300/20"><Bot className="size-3" />AI</span>}
           </span>
-          <span className="block truncate text-[11px] text-zinc-500">
-            {h.kinds[rec.kind]} · {rec.author} · {when}
-            {version ? ` · v${version.version}` : rec.workbook_stored === false ? ` · ${h.gone}` : ` · ${rec.workbook_name ?? rec.workbook}`}
-            {rec.parent ? ` · ${h.parent(`S${rec.parent}`)}` : ""}
-          </span>
+          <RecordMeta rec={rec} version={version} />
         </span>
         {rec.status !== "recorded" && <Pill status={rec.status} label={h.states[rec.status]} title="" />}
-        {analysis && comparing && comparing !== rec.ref && <span className="text-[11px] text-blue-300">{h.compare}</span>}
       </button>
       {open && (
-        <RecordDetail pid={pid} rec={rec} currentId={currentId} latest={latest} by={by} comparing={comparing} onCompare={onCompare}
+        <RecordDetail pid={pid} rec={rec} currentId={currentId} latest={latest} by={by} onCompare={onCompare}
           onContinue={onContinue} onOpenCell={onOpenCell} onChanged={onChanged} onNewVersion={onNewVersion} />
       )}
     </li>
   );
 }
 
-function RecordDetail({ pid, rec, currentId, latest, by, comparing, onCompare, onContinue, onOpenCell, onChanged, onNewVersion }: {
-  pid: string; rec: HistoryRecord; currentId: string; latest?: Workbook; by?: string; comparing: string | null; onCompare: () => void;
+function RecordDetail({ pid, rec, currentId, latest, by, onCompare, onContinue, onOpenCell, onChanged, onNewVersion }: {
+  pid: string; rec: HistoryRecord; currentId: string; latest?: Workbook; by?: string; onCompare: () => void;
   onContinue: (rec: HistoryRecord) => void; onOpenCell: (cell: string) => void; onChanged: () => void; onNewVersion: (id: string) => Promise<void>;
 }) {
   const { t } = useI18n();
@@ -944,11 +1005,10 @@ function RecordDetail({ pid, rec, currentId, latest, by, comparing, onCompare, o
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [review, setReview] = useState<"approve" | "reject" | null>(null);
-  const [note, setNote] = useState("");
-  const [reapply, setReapply] = useState<{ cell: string; ok: boolean; problem?: string }[] | null>(null);
+  const [ask, setAsk] = useState<"approve" | "reject" | "withdraw" | "reapply" | null>(null);
+  const [reapplyProblems, setReapplyProblems] = useState<{ cell: string; ok: boolean; problem?: string }[] | null>(null);
   const [reloads, setReloads] = useState(0);
-  const analysis = rec.kind === "scenario" || rec.kind === "sensitivity" || rec.kind === "goal_seek";
+  const analysis = ANALYSES.has(rec.kind);
   const correction = !analysis;
 
   useEffect(() => {
@@ -965,10 +1025,20 @@ function RecordDetail({ pid, rec, currentId, latest, by, comparing, onCompare, o
   const r = full ?? rec;
   const result = (full?.result ?? {}) as Record<string, unknown>;
   const old = (r.params?.old ?? {}) as Record<string, string>;
-  const outputs = (correction ? ((result.impact as ScenarioResult | null)?.outputs ?? []) : ((result.outputs as CellChange[] | undefined) ?? [])) as CellChange[];
+  const impact = correction ? (result.impact as ScenarioResult | null) : null;
+  const outputs = (correction ? (impact?.outputs ?? []) : ((result.outputs as CellChange[] | undefined) ?? [])) as CellChange[];
   const reason = r.params?.reason as string | undefined;
   const stored = r.workbook_stored !== false;
   const elsewhere = stored && r.workbook !== currentId;
+  const nChanges = Object.keys(r.changes).length;
+  const changeList = (
+    <ul className="mt-2 space-y-0.5 rounded-md bg-white/[0.03] px-3 py-2 font-mono text-xs">
+      {Object.entries(r.changes).slice(0, 6).map(([cell, v]) => (
+        <li key={cell} className="truncate"><span className="text-blue-300">{cell}</span> <span className="text-zinc-500">{old[cell] || "—"} →</span> <span className="text-white">{fmtValue(v)}</span></li>
+      ))}
+      {nChanges > 6 && <li className="text-zinc-500">{t.twin.verify.more(nChanges - 6)}</li>}
+    </ul>
+  );
 
   return (
     <div className="space-y-4 border-t border-white/[0.06] px-4 py-4 text-xs">
@@ -976,7 +1046,7 @@ function RecordDetail({ pid, rec, currentId, latest, by, comparing, onCompare, o
         <p className="text-sm text-zinc-200">{reason ? <><span className="text-zinc-500">{h.reason}</span>{reason}</> : r.note}</p>
       )}
 
-      {Object.keys(r.changes).length > 0 && (
+      {nChanges > 0 && (
         <div>
           <h4 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">{h.changes}</h4>
           <div className="overflow-x-auto rounded-md border border-white/[0.07]">
@@ -985,7 +1055,7 @@ function RecordDetail({ pid, rec, currentId, latest, by, comparing, onCompare, o
               <tbody>
                 {Object.entries(r.changes).slice(0, 100).map(([cell, v]) => (
                   <tr key={cell} className="border-t border-white/[0.05]">
-                    <td className={td}><button onClick={() => onOpenCell(cell)} className="font-mono text-blue-300 hover:underline">{cell}</button></td>
+                    <td className={td}><button onClick={() => onOpenCell(cell)} className={`${btnLink} font-mono`}>{cell}</button></td>
                     {correction && <td className={`${td} font-mono text-zinc-400`}>{old[cell] === "" ? "—" : old[cell] ?? "—"}</td>}
                     <td className={`${td} font-mono text-white`}>{fmtValue(v)}</td>
                   </tr>
@@ -1027,19 +1097,7 @@ function RecordDetail({ pid, rec, currentId, latest, by, comparing, onCompare, o
       {msg && <p className="rounded-md bg-emerald-400/[0.07] px-3 py-2 text-emerald-100 ring-1 ring-emerald-400/20">{msg}</p>}
       <ErrorLine text={error} />
 
-      {reapply && (
-        <div className="rounded-md bg-amber-400/[0.06] p-3 text-amber-100 ring-1 ring-amber-300/20">
-          <p>{h.reapplyProblems}</p>
-          <ul className="mt-1 list-disc pl-5">{reapply.filter((c) => !c.ok).map((c) => <li key={c.cell}><span className="font-mono">{c.cell}</span>: {c.problem}</li>)}</ul>
-          <button onClick={() => act("reapply", async () => {
-            const res = await api.reapply(pid, rec.ref, currentId, true, by);
-            setReapply(null); if (res.record) { setMsg(t.twin.whatif.saved(res.record.ref)); onChanged(); }
-          })} className={`${btnGhost} mt-2`}>{h.reapplyForce}</button>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-3">
         {analysis && stored && (
           <>
             <button onClick={() => act("replay", async () => {
@@ -1048,21 +1106,21 @@ function RecordDetail({ pid, rec, currentId, latest, by, comparing, onCompare, o
             })} disabled={!!busy} className={btnGhost}>{busy === "replay" ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}{h.replay}</button>
             <a href={api.recordExportUrl(pid, rec.ref) + (by ? `?by=${encodeURIComponent(by)}` : "")} download className={btnGhost}><Download className="size-3.5" />{h.export}</a>
             {r.workbook === currentId && <button onClick={() => onContinue(r)} className={btnGhost}><GitBranch className="size-3.5" />{h.continue}</button>}
-            <button onClick={onCompare} className={`${btnGhost} ${comparing === rec.ref ? "ring-blue-400/50" : ""}`}><GitCompare className="size-3.5" />{h.compare}</button>
+            <button onClick={onCompare} className={btnGhost}><GitCompare className="size-3.5" />{h.compare}</button>
           </>
         )}
         {analysis && elsewhere && (
           <button onClick={() => act("reapply", async () => {
             const res = await api.reapply(pid, rec.ref, currentId, false, by);
-            if (res.reapplied && res.record) { setMsg(t.twin.whatif.saved(res.record.ref)); onChanged(); } else setReapply(res.checks);
+            if (res.reapplied && res.record) { setMsg(t.twin.whatif.saved(res.record.ref)); onChanged(); }
+            else { setReapplyProblems(res.checks.filter((c) => !c.ok)); setAsk("reapply"); }
           })} disabled={!!busy} className={btnGhost}>{busy === "reapply" ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}{h.reapply}</button>
         )}
-        {correction && r.status === "pending" && !review && (
+        {correction && r.status === "pending" && (
           <>
-            <button onClick={() => setReview("approve")} className={btnPrimary}><Check className="size-3.5" />{h.approve}</button>
-            <button onClick={() => setReview("reject")} className={btnGhost}><X className="size-3.5" />{h.reject}</button>
-            <button onClick={() => act("withdraw", async () => { await api.review(pid, rec.ref, "withdraw", undefined, by); onChanged(); })}
-              disabled={!!busy} className="rounded-md px-2.5 py-1.5 text-xs text-zinc-400 hover:bg-white/5 hover:text-white">{h.withdraw}</button>
+            <button onClick={() => setAsk("approve")} className={btnPrimary}><Check className="size-3.5" />{h.approve}</button>
+            <button onClick={() => setAsk("reject")} className={btnGhost}><X className="size-3.5" />{h.reject}</button>
+            <button onClick={() => setAsk("withdraw")} className={`${btnQuiet} ml-auto`}><Undo2 className="size-3.5" />{h.withdraw}</button>
           </>
         )}
         {correction && r.status === "approved" && r.applied_as && (
@@ -1070,63 +1128,127 @@ function RecordDetail({ pid, rec, currentId, latest, by, comparing, onCompare, o
         )}
       </div>
 
-      {review && (
-        <div className={`rounded-md p-3 ring-1 ${review === "approve" ? "bg-blue-500/[0.06] ring-blue-400/25" : "bg-rose-500/[0.05] ring-rose-400/25"}`}>
-          {review === "approve" && <p className="text-zinc-200">{h.confirmApprove(Object.keys(r.changes).length)}{latest && latest.id !== r.workbook ? ` ${h.onlyLatest}` : ""}</p>}
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={review === "approve" ? h.approveNote : h.rejectNote} className={`${input} mt-2 w-full text-xs`} />
-          <div className="mt-2 flex justify-end gap-2">
-            <button onClick={() => { setReview(null); setNote(""); }} className="rounded-md px-2.5 py-1 text-zinc-300 hover:bg-white/10">{h.cancel}</button>
-            <button disabled={!!busy || (review === "reject" && !note.trim())} onClick={() => act(review, async () => {
-              const res = await api.review(pid, rec.ref, review, note || undefined, by);
-              setReview(null); setNote(""); onChanged();
-              if (review === "approve" && res.applied_as) { setMsg(h.applied(res.applied_as.slice(0, 7))); await onNewVersion(res.applied_as); }
-            })} className={review === "approve" ? btnPrimary : `${btn} bg-rose-600 text-white hover:bg-rose-500`}>
-              {busy && <Loader2 className="size-3.5 animate-spin" />}{review === "approve" ? h.approve : h.reject}
-            </button>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog open={ask === "approve"} title={h.approveTitle(rec.ref)} confirm={h.approve}
+        body={<>{h.confirmApprove(nChanges)}{changeList}{latest && latest.id !== r.workbook && <p className="mt-2 text-amber-200">{h.onlyLatest}</p>}</>}
+        note={{ placeholder: h.approveNote }} onClose={() => setAsk(null)}
+        onConfirm={async (note) => {
+          const res = await api.review(pid, rec.ref, "approve", note || undefined, by);
+          onChanged();
+          if (res.applied_as) { setMsg(h.applied(res.applied_as.slice(0, 7))); await onNewVersion(res.applied_as); }
+        }} />
+      <ConfirmDialog open={ask === "reject"} title={h.rejectTitle(rec.ref)} confirm={h.reject} tone="danger"
+        body={<>{h.rejectBody}{changeList}</>} note={{ placeholder: h.rejectNote, required: true }} onClose={() => setAsk(null)}
+        onConfirm={async (note) => { await api.review(pid, rec.ref, "reject", note, by); onChanged(); }} />
+      <ConfirmDialog open={ask === "withdraw"} title={h.withdrawTitle(rec.ref)} confirm={h.withdraw} tone="danger"
+        body={h.withdrawBody} onClose={() => setAsk(null)}
+        onConfirm={async () => { await api.review(pid, rec.ref, "withdraw", undefined, by); onChanged(); }} />
+      <ConfirmDialog open={ask === "reapply"} title={h.reapply} confirm={h.reapplyForce}
+        body={<>{h.reapplyProblems}<ul className="mt-2 space-y-0.5 rounded-md bg-white/[0.03] px-3 py-2 text-xs">{(reapplyProblems ?? []).map((c) => <li key={c.cell}><span className="font-mono text-blue-300">{c.cell}</span> <span className="text-zinc-400">{c.problem}</span></li>)}</ul></>}
+        onClose={() => setAsk(null)}
+        onConfirm={async () => {
+          const res = await api.reapply(pid, rec.ref, currentId, true, by);
+          if (res.record) { setMsg(t.twin.whatif.saved(res.record.ref)); onChanged(); }
+        }} />
     </div>
   );
 }
 
-function ComparePanel({ data, onClose, onOpenCell }: { data: CompareResult; onClose: () => void; onOpenCell: (cell: string) => void }) {
+/** Pick another analysis to compare with `base` (searchable, in a dialog), then show both side by side. */
+function ComparePicker({ pid, base, records, fileIds, versionOf, onClose, onOpenCell }: {
+  pid: string; base: HistoryRecord | null; records: HistoryRecord[]; fileIds: Set<string>; versionOf: (id: string) => Workbook | undefined;
+  onClose: () => void; onOpenCell: (cell: string) => void;
+}) {
   const { t } = useI18n();
   const h = t.twin.history;
+  const summarize = useSummary();
+  const [query, setQuery] = useState("");
+  const [onlyFile, setOnlyFile] = useState(true);
+  const [result, setResult] = useState<CompareResult | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const close = () => { setResult(null); setQuery(""); setError(null); onClose(); };
+  async function pick(other: HistoryRecord) {
+    if (!base) return;
+    setBusy(other.ref); setError(null);
+    try { setResult(await api.compare(pid, base.ref, other.ref)); } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+  }
+  const q = query.trim().toLowerCase();
+  const candidates = base ? records.filter((r) => ANALYSES.has(r.kind) && r.ref !== base.ref && (!onlyFile || fileIds.has(r.workbook))
+    && (!q || r.ref.toLowerCase().includes(q) || summarize(r).toLowerCase().includes(q) || r.author.toLowerCase().includes(q))) : [];
+
   return (
-    <div className={`${card} mt-3`}>
-      <div className="flex items-center gap-2">
-        <GitCompare className="size-4 text-blue-300" />
-        <h4 className="text-sm font-medium text-white">{h.compareTitle(data.a.ref, data.b.ref)}</h4>
-        <button onClick={onClose} aria-label={t.app.close} className="ml-auto text-zinc-500 hover:text-white"><X className="size-4" /></button>
-      </div>
-      {data.note && <p className="mt-1 text-xs text-zinc-500">{data.note}</p>}
-      {!data.inputs.length && !data.cells.length ? (
-        <p className="mt-3 text-sm text-zinc-400">{h.sameAll}</p>
+    <Modal open={!!base} wide title={result ? h.compareTitle(result.a.ref, result.b.ref) : h.pickCompare(base?.ref ?? "")} onClose={close} busy={!!busy}>
+      {result ? (
+        <>
+          <button onClick={() => setResult(null)} className={`${btnQuiet} -ml-2 mb-2`}><ChevronRight className="size-3.5 rotate-180" />{h.back}</button>
+          <CompareBody data={result} onOpenCell={(c) => { close(); onOpenCell(c); }} />
+        </>
       ) : (
-        <div className="mt-3 space-y-3 text-xs">
-          {[{ title: h.compareInputs, rows: data.inputs }, { title: h.compareCells(data.n_cells), rows: data.cells }].map(({ title, rows }) => rows.length > 0 && (
-            <div key={title}>
-              <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-zinc-500">{title}</p>
-              <div className="overflow-x-auto rounded-md border border-white/[0.07]">
-                <table className="w-full">
-                  <thead className="bg-white/[0.03]"><tr><th className={th}>{t.twin.whatif.cell}</th><th className={th}>{t.twin.whatif.label}</th><th className={`${th} text-right`}>{data.a.ref}</th><th className={`${th} text-right`}>{data.b.ref}</th></tr></thead>
-                  <tbody>
-                    {rows.slice(0, 100).map((x) => (
-                      <tr key={x.cell} className="border-t border-white/[0.05]">
-                        <td className={td}><button onClick={() => onOpenCell(x.cell)} className="font-mono text-blue-300 hover:underline">{x.cell}</button></td>
-                        <td className={`${td} text-zinc-400`}>{x.label}</td>
-                        <td className={`${td} text-right tabular-nums text-zinc-200`}>{fmtValue(x.a)}</td>
-                        <td className={`${td} text-right tabular-nums text-white`}>{fmtValue(x.b)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className={`${input} flex min-w-[14rem] flex-1 items-center gap-2 py-1.5`}>
+              <Search className="size-3.5 text-zinc-500" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={h.compareSearch} autoFocus className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200">
+              <input type="checkbox" checked={onlyFile} onChange={(e) => setOnlyFile(e.target.checked)} className="accent-blue-500" />{h.thisFile}
+            </label>
+          </div>
+          <ErrorLine text={error} />
+          {candidates.length === 0 ? (
+            <p className="py-8 text-center text-sm text-zinc-500">{h.compareNone}</p>
+          ) : (
+            <ul className="mt-3 space-y-1">
+              {candidates.map((r) => {
+                const Icon = KIND_ICON[r.kind] ?? History;
+                return (
+                  <li key={r.ref}>
+                    <button onClick={() => pick(r)} disabled={!!busy}
+                      className={`flex w-full items-center gap-3 rounded-md bg-white/[0.02] px-3 py-2 text-left ring-1 ring-white/[0.06] transition hover:bg-blue-500/[0.08] hover:ring-blue-400/30 disabled:opacity-60 ${focus}`}>
+                      <Icon className="size-4 shrink-0 text-blue-300" />
+                      <span className="w-10 shrink-0 font-mono text-xs text-zinc-200">{r.ref}</span>
+                      <span className="min-w-0 flex-1"><span className="block truncate text-sm text-zinc-100">{summarize(r)}</span><RecordMeta rec={r} version={versionOf(r.workbook)} /></span>
+                      {busy === r.ref ? <Loader2 className="size-4 animate-spin text-zinc-400" /> : <GitCompare className="size-4 text-zinc-500" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
       )}
+    </Modal>
+  );
+}
+
+function CompareBody({ data, onOpenCell }: { data: CompareResult; onOpenCell: (cell: string) => void }) {
+  const { t } = useI18n();
+  const h = t.twin.history;
+  if (!data.inputs.length && !data.cells.length) return <p className="text-sm text-zinc-400">{h.sameAll}</p>;
+  return (
+    <div className="space-y-4 text-xs">
+      {data.note && <p className="text-zinc-500">{data.note}</p>}
+      {[{ title: h.compareInputs, rows: data.inputs }, { title: h.compareCells(data.n_cells), rows: data.cells }].map(({ title, rows }) => rows.length > 0 && (
+        <div key={title}>
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">{title}</p>
+          <div className="overflow-x-auto rounded-md border border-white/[0.07]">
+            <table className="w-full">
+              <thead className="bg-white/[0.03]"><tr><th className={th}>{t.twin.whatif.cell}</th><th className={th}>{t.twin.whatif.label}</th><th className={`${th} text-right`}>{data.a.ref}</th><th className={`${th} text-right`}>{data.b.ref}</th><th className={`${th} text-right`}>{t.twin.whatif.delta}</th></tr></thead>
+              <tbody>
+                {rows.slice(0, 100).map((x) => (
+                  <tr key={x.cell} className="border-t border-white/[0.05]">
+                    <td className={td}><button onClick={() => onOpenCell(x.cell)} className={`${btnLink} font-mono`}>{x.cell}</button></td>
+                    <td className={`${td} text-zinc-400`}><span className="block max-w-[12rem] truncate">{x.label}</span></td>
+                    <td className={`${td} text-right tabular-nums text-zinc-200`}>{fmtValue(x.a)}</td>
+                    <td className={`${td} text-right tabular-nums text-white`}>{fmtValue(x.b)}</td>
+                    <td className={`${td} text-right`}><Delta d={typeof x.a === "number" && typeof x.b === "number" ? x.b - x.a : null} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1138,19 +1260,8 @@ function VersionsPanel({ pid, versions, latest, by, onChanged, onOpen }: {
   const { t } = useI18n();
   const h = t.twin.history;
   const [target, setTarget] = useState<Workbook | null>(null);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const sorted = [...versions].sort((a, b) => b.version - a.version);
-  async function submit() {
-    if (!target || !latest) return;
-    setBusy(true); setError(null);
-    try {
-      const rec = await api.proposeRevert(pid, { workbook: latest.id, to: target.id, reason, by });
-      setDone(rec.ref); setTarget(null); setReason(""); onChanged();
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
-  }
   return (
     <aside className={`${card} h-fit`}>
       <h3 className="flex items-center gap-1.5 text-sm font-medium text-zinc-200"><History className="size-4 text-blue-300" />{h.versions}</h3>
@@ -1158,28 +1269,26 @@ function VersionsPanel({ pid, versions, latest, by, onChanged, onOpen }: {
         {sorted.map((v) => (
           <li key={v.id} className="rounded-md bg-white/[0.02] px-2.5 py-2 ring-1 ring-white/[0.06]">
             <div className="flex items-center gap-2">
-              <button onClick={() => onOpen(v.id)} className="font-medium text-zinc-100 hover:underline">v{v.version}</button>
+              <button onClick={() => onOpen(v.id)} className={`${btnLink} text-zinc-100`}>v{v.version}</button>
               <span className="font-mono text-zinc-500">{v.id.slice(0, 7)}</span>
               {v.id === latest?.id && <span className="ml-auto rounded bg-emerald-400/10 px-1.5 text-[11px] text-emerald-300 ring-1 ring-emerald-400/20">{h.currentVersion}</span>}
             </div>
             <p className="mt-0.5 text-zinc-500">{v.first_uploaded ? new Date(v.first_uploaded).toLocaleString(t.locale, { dateStyle: "short", timeStyle: "short" }) : ""}</p>
-            {v.id !== latest?.id && target?.id !== v.id && (
-              <button onClick={() => { setTarget(v); setDone(null); }} className="mt-1 flex items-center gap-1 text-blue-300 hover:underline"><Undo2 className="size-3" />{h.revertTo(v.version)}</button>
-            )}
-            {target?.id === v.id && (
-              <div className="mt-2">
-                <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder={h.revertReason} className={`${input} w-full text-xs`} />
-                <div className="mt-1.5 flex justify-end gap-2">
-                  <button onClick={() => setTarget(null)} className="rounded-md px-2 py-1 text-zinc-300 hover:bg-white/10">{h.cancel}</button>
-                  <button onClick={submit} disabled={busy || !reason.trim()} className={btnPrimary}>{busy && <Loader2 className="size-3.5 animate-spin" />}{h.propose}</button>
-                </div>
-              </div>
+            {v.id !== latest?.id && (
+              <button onClick={() => { setTarget(v); setDone(null); }} className={`${btnGhost} mt-2 w-full py-1`}><Undo2 className="size-3.5" />{h.revertTo(v.version)}</button>
             )}
           </li>
         ))}
       </ul>
       {done && <p className="mt-2 rounded-md bg-amber-400/[0.07] px-2.5 py-1.5 text-xs text-amber-100 ring-1 ring-amber-300/20">{h.proposed(done)}</p>}
-      <ErrorLine text={error} />
+      <ConfirmDialog open={!!target} title={target ? h.revertTitle(target.version) : ""} confirm={h.propose}
+        body={target && latest ? h.revertBody(target.version, latest.version) : null}
+        note={{ placeholder: h.revertReason, required: true }} onClose={() => setTarget(null)}
+        onConfirm={async (reason) => {
+          if (!target || !latest) return;
+          const rec = await api.proposeRevert(pid, { workbook: latest.id, to: target.id, reason, by });
+          setDone(rec.ref); onChanged();
+        }} />
     </aside>
   );
 }
