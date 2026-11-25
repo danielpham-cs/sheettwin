@@ -241,6 +241,23 @@ def _db(wid):
     return Path(os.environ["SHEETIR_DATA"]) / wid / "ir.db"
 
 
+def test_api_correction_diff_and_export(api):
+    client, wid = api
+    base = "/api/projects/default"
+    c = client.post(f"{base}/corrections", json={"workbook": wid, "edits": {"Inputs!B1": "3"}, "reason": "rate",
+                                                  "by": "ann"}).json()
+    assert client.get(f"{base}/history/{c['ref']}/diff").status_code == 409  # not approved yet
+    preview = client.get(f"{base}/history/{c['ref']}/export")  # the corrected file, before approval
+    assert preview.status_code == 200 and load_workbook(io.BytesIO(preview.content))["Inputs"]["B1"].value == 3
+    client.post(f"{base}/history/{c['ref']}/approve", json={"by": "ann"})
+    d = client.get(f"{base}/history/{c['ref']}/diff").json()
+    assert (d["a"]["ref"], d["b"]["ref"]) == ("v1", "v2")
+    assert d["inputs"] == [{"cell": "Inputs!B1", "label": "Rate", "a": "2", "b": "3"}]
+    got = {x["cell"]: (x["a"], x["b"], x["delta"]) for x in d["cells"]}
+    assert got["Calc!D5"] == (36.5, 54.75, 18.25)
+    assert client.get(f"{base}/history/S9/diff").status_code == 404
+
+
 def test_api_scenario_reapplied_on_a_new_version(api):
     client, wid = api
     base = "/api/projects/default"

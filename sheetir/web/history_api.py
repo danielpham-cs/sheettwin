@@ -22,6 +22,7 @@ History:
     POST /api/projects/{pid}/history/{ref}/replay       compute again and say whether the result is the same
     POST /api/projects/{pid}/history/{ref}/reapply      {to}: the same changes on another version of the file
     GET  /api/projects/{pid}/history/{ref}/export       a copy of the workbook with the record's values typed in
+    GET  /api/projects/{pid}/history/{ref}/diff         an approved correction: what changed between the two versions
 
 `parent` continues a recorded analysis: `changes` are then added to the parent's, and `reset` drops some of them.
 Who did what comes from the signed-in user (users.py); when users are not separated, from the `by` name the client
@@ -43,7 +44,8 @@ from pydantic import BaseModel, Field
 from .. import fixes
 from ..history import ANALYSES, CHANGES, History, HistoryError, parse_ref, summary
 from ..transpile import decode
-from ..whatif import Engine, WhatIfError, as_typed, result_fingerprint, typed
+from .. import xl
+from ..whatif import MAX_LISTED, Engine, WhatIfError, as_typed, result_fingerprint, show, typed
 from . import projects, provenance, users
 
 router = APIRouter()
@@ -275,6 +277,50 @@ def _rerun(rec: dict) -> dict:
         return eng.sensitivity(p["target"], p.get("inputs"), p.get("step", 0.1), rec["changes"])
     start = {c: v for c, v in (rec["changes"] or {}).items() if c != p["changing"]}
     return eng.goal_seek(p["target"], p["goal"], p["changing"], start, p.get("low"), p.get("high"))
+
+
+@router.get("/api/projects/{pid}/history/{ref}/diff")
+def correction_diff(pid: str, ref: str):
+    """What an approved correction changed: the cells whose contents differ between the version it was made on and the
+    version it became, and every formula cell whose value differs between the two (each computed by its own twin; the
+    key outputs first). In the shape of `compare`, with the two versions as `a` and `b`."""
+    with _errors():
+        rec = _record(_history(pid), ref)
+        if rec["kind"] not in CHANGES:
+            raise HTTPException(400, f"{rec['ref']} is an analysis: compare it with another record instead")
+        if rec["status"] != "approved" or not rec["applied_as"]:
+            raise HTTPException(409, f"{rec['ref']} is {rec['status']}: only an approved correction made a new version")
+        web = _web()
+        ids = web._workbook_ids()
+        old_id, new_id = rec["workbook"], rec["applied_as"]
+        for wid in (old_id, new_id):
+            if wid not in ids:
+                raise HTTPException(409, f"workbook {wid} is no longer stored")
+        versions = {e["id"]: e["version"] for e in provenance.catalog(web.data_dir())}
+        side = lambda wid: {"ref": f"v{versions.get(wid, '?')}", "kind": "version", "workbook": wid,  # noqa: E731
+                            "note": None, "author": rec["author"], "created": rec["created"]}
+        old_db, new_db = web._db_path(old_id), web._db_path(new_id)
+        contents = provenance.diff(new_db, old_db)
+        e_old, e_new = Engine.cached(old_db), Engine.cached(new_db)
+        inputs = []
+        for row in contents["cells"]:
+            label = None
+            try:
+                label = e_new.label(e_new.key(row["cell_id"]))
+            except WhatIfError:
+                pass
+            inputs.append({"cell": row["cell_id"], "label": label, "a": row["old"], "b": row["new"]})
+        base_old, base_new = e_old.base(), e_new.base()
+        diff = [ck for ck in e_new.twin.order if ck in base_old and not xl.same(base_old[ck], base_new.get(ck))]
+        diff.sort(key=lambda ck: e_new.twin.roles.get(ck) != "output")
+        cells = []
+        for ck in diff[:MAX_LISTED]:
+            a, b = base_old[ck], base_new.get(ck)
+            d = show(b - a) if isinstance(a, float) and isinstance(b, float) else None
+            cells.append({"cell": e_new.cell_id(ck), "label": e_new.label(ck), "a": show(a), "b": show(b), "delta": d,
+                          "status": e_new.status.get(ck)})
+        return {"a": side(old_id), "b": side(new_id), "same_workbook": False, "inputs": inputs, "cells": cells,
+                "n_cells": len(diff), "truncated": len(diff) > MAX_LISTED or contents["truncated"]}
 
 
 class ByRequest(BaseModel):

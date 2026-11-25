@@ -5,7 +5,7 @@ import {
   Play, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Target, Undo2, Waypoints, X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   api, type CompareResult, type CellChange, type GoalSeekResult, type HistoryRecord, type ModelCell, type ModelCells,
   type ScenarioResult, type SensitivityResult, type TwinCheck, type Workbook,
@@ -120,6 +120,26 @@ const card = "rounded-lg border border-white/[0.07] bg-surface/90 p-4";
 const th = "px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-zinc-500";
 const td = "px-3 py-1.5 align-top";
 
+/** A button that stays in place when it cannot be used: greyed out, with the reason on hover and for screen readers. */
+function Action({ onClick, href, disabled, why, busy, icon: Icon, label, tone = "ghost", className = "" }: {
+  onClick?: () => void; href?: string; disabled?: boolean; why?: string | null; busy?: boolean;
+  icon: typeof Check; label: string; tone?: "ghost" | "primary" | "quiet"; className?: string;
+}) {
+  const cls = `${tone === "primary" ? btnPrimary : tone === "quiet" ? btnQuiet : btnGhost} ${className}`;
+  const whyId = useId();
+  const blocked = !!why;
+  const inner = <>{busy ? <Loader2 className="size-3.5 animate-spin" /> : <Icon className="size-3.5" />}{label}</>;
+  if (href && !blocked && !disabled) return <a href={href} download className={cls}>{inner}</a>;
+  return (
+    // The wrapper carries the tooltip: a disabled button gets no mouse events, so its own title would not show.
+    <span title={why ?? undefined} className={`inline-flex ${blocked ? "cursor-help" : ""}`}>
+      <button onClick={onClick} disabled={disabled || blocked} aria-describedby={blocked ? whyId : undefined}
+        className={`${cls} ${blocked ? "pointer-events-none" : ""}`}>{inner}</button>
+      {blocked && <span id={whyId} className="sr-only">{why}</span>}
+    </span>
+  );
+}
+
 /** A dialog over the page (the app's own pattern: a dimmed backdrop, focus kept inside, Escape and a click outside close
  * it unless `busy`). */
 function Modal({ open, title, onClose, busy, wide, children }: {
@@ -158,7 +178,7 @@ function Modal({ open, title, onClose, busy, wide, children }: {
 /** Ask before an action that changes the data or the history; `note` adds a text box (required when it says so). */
 function ConfirmDialog({ open, title, body, confirm, tone = "primary", note, onConfirm, onClose }: {
   open: boolean; title: string; body?: React.ReactNode; confirm: string; tone?: "primary" | "danger";
-  note?: { placeholder: string; required?: boolean };
+  note?: { placeholder: string; required?: boolean; initial?: string };
   /** Runs the action; a thrown error is shown in the dialog, which stays open. */
   onConfirm: (note: string) => Promise<void>;
   onClose: () => void;
@@ -167,6 +187,12 @@ function ConfirmDialog({ open, title, body, confirm, tone = "primary", note, onC
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Each time it opens, the note starts from `note.initial` (state adjusted while rendering).
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setText(note?.initial ?? "");
+  }
   const close = () => { setText(""); setError(null); onClose(); };
   async function go() {
     setBusy(true); setError(null);
@@ -1007,7 +1033,8 @@ function RecordDetail({ pid, rec, currentId, latest, versions, by, onCompare, on
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [ask, setAsk] = useState<"approve" | "reject" | "withdraw" | "reapply" | null>(null);
+  const [ask, setAsk] = useState<"approve" | "reject" | "withdraw" | "reapply" | "repropose" | null>(null);
+  const [diff, setDiff] = useState<CompareResult | null>(null);
   const [reapplyProblems, setReapplyProblems] = useState<{ cell: string; ok: boolean; problem?: string }[] | null>(null);
   const [reloads, setReloads] = useState(0);
   const analysis = ANALYSES.has(rec.kind);
@@ -1031,7 +1058,13 @@ function RecordDetail({ pid, rec, currentId, latest, versions, by, onCompare, on
   const outputs = (correction ? (impact?.outputs ?? []) : ((result.outputs as CellChange[] | undefined) ?? [])) as CellChange[];
   const reason = r.params?.reason as string | undefined;
   const stored = r.workbook_stored !== false;
-  const elsewhere = stored && r.workbook !== currentId;
+  const versionNo = (id: string | null | undefined) => versions.find((w) => w.id === id)?.version;
+  const madeOn = versionNo(r.workbook) ? `v${versionNo(r.workbook)}` : null;
+  const latestName = latest ? `v${latest.version}` : null;
+  const appliedVersion = versionNo(r.applied_as);
+  const appliedStored = !!appliedVersion;
+  // A pending correction made on a version that is no longer current cannot be approved: propose it again instead.
+  const stale = r.status === "pending" && !!latest && latest.id !== r.workbook;
   const nChanges = Object.keys(r.changes).length;
   const changeList = (
     <ul className="mt-2 space-y-0.5 rounded-md bg-white/[0.03] px-3 py-2 font-mono text-xs">
@@ -1100,38 +1133,62 @@ function RecordDetail({ pid, rec, currentId, latest, versions, by, onCompare, on
       <ErrorLine text={error} />
 
       <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-3">
-        {analysis && stored && (
+        {analysis ? (
           <>
-            <button onClick={() => act("replay", async () => {
-              const res = await api.replay(pid, rec.ref, by);
-              setMsg(res.same ? h.replaySame : h.replayDiff); setReloads((n) => n + 1);
-            })} disabled={!!busy} className={btnGhost}>{busy === "replay" ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}{h.replay}</button>
-            <a href={api.recordExportUrl(pid, rec.ref) + (by ? `?by=${encodeURIComponent(by)}` : "")} download className={btnGhost}><Download className="size-3.5" />{h.export}</a>
-            {r.workbook === currentId && <button onClick={() => onContinue(r)} className={btnGhost}><GitBranch className="size-3.5" />{h.continue}</button>}
-            <button onClick={onCompare} className={btnGhost}><GitCompare className="size-3.5" />{h.compare}</button>
+            <Action icon={RefreshCw} label={h.replay} busy={busy === "replay"} disabled={!!busy} why={!stored ? h.why.gone : null}
+              onClick={() => act("replay", async () => {
+                const res = await api.replay(pid, rec.ref, by);
+                setMsg(res.same ? h.replaySame : h.replayDiff); setReloads((n) => n + 1);
+              })} />
+            <Action icon={Download} label={h.export} why={!stored ? h.why.gone : null}
+              href={api.recordExportUrl(pid, rec.ref) + (by ? `?by=${encodeURIComponent(by)}` : "")} />
+            <Action icon={GitBranch} label={h.continue} onClick={() => onContinue(r)}
+              why={!stored ? h.why.gone : r.workbook !== currentId ? h.why.otherVersion(madeOn ?? "?") : null} />
+            <Action icon={GitCompare} label={h.compare} onClick={onCompare} />
+            <Action icon={RotateCcw} label={h.reapply} busy={busy === "reapply"} disabled={!!busy}
+              why={r.workbook === currentId ? h.why.sameVersion : null}
+              onClick={() => act("reapply", async () => {
+                const res = await api.reapply(pid, rec.ref, currentId, false, by);
+                if (res.reapplied && res.record) { setMsg(t.twin.whatif.saved(res.record.ref)); onChanged(); }
+                else { setReapplyProblems(res.checks.filter((c) => !c.ok)); setAsk("reapply"); }
+              })} />
           </>
-        )}
-        {analysis && elsewhere && (
-          <button onClick={() => act("reapply", async () => {
-            const res = await api.reapply(pid, rec.ref, currentId, false, by);
-            if (res.reapplied && res.record) { setMsg(t.twin.whatif.saved(res.record.ref)); onChanged(); }
-            else { setReapplyProblems(res.checks.filter((c) => !c.ok)); setAsk("reapply"); }
-          })} disabled={!!busy} className={btnGhost}>{busy === "reapply" ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}{h.reapply}</button>
-        )}
-        {correction && r.status === "pending" && (
+        ) : (
           <>
-            <button onClick={() => setAsk("approve")} className={btnPrimary}><Check className="size-3.5" />{h.approve}</button>
-            <button onClick={() => setAsk("reject")} className={btnGhost}><X className="size-3.5" />{h.reject}</button>
-            <button onClick={() => setAsk("withdraw")} className={`${btnQuiet} ml-auto`}><Undo2 className="size-3.5" />{h.withdraw}</button>
+            {r.status === "pending" && (
+              <>
+                <Action icon={Check} label={h.approve} tone="primary" onClick={() => setAsk("approve")}
+                  why={stale ? h.why.stale(madeOn ?? "?", latestName ?? "?") : null} />
+                <Action icon={X} label={h.reject} onClick={() => setAsk("reject")} />
+              </>
+            )}
+            <Action icon={Download} label={r.status === "approved" ? h.download : h.downloadPreview} why={!stored ? h.why.gone : null}
+              href={api.recordExportUrl(pid, rec.ref) + (by ? `?by=${encodeURIComponent(by)}` : "")} />
+            <Action icon={GitCompare} label={h.diffPrev} busy={busy === "diff"} disabled={!!busy}
+              why={r.status === "pending" ? h.why.notApplied : r.status !== "approved" ? h.why.notAppliedEver : !stored || !appliedStored ? h.why.gone : null}
+              onClick={() => act("diff", async () => setDiff(await api.correctionDiff(pid, rec.ref)))} />
+            <Action icon={ChevronRight} label={appliedVersion ? `${h.openVersion} v${appliedVersion}` : h.openVersion}
+              why={r.status === "pending" ? h.why.notApplied : r.status !== "approved" ? h.why.notAppliedEver : !appliedStored ? h.why.gone : null}
+              onClick={() => onNewVersion(r.applied_as!)} />
+            <Action icon={RotateCcw} label={h.repropose} onClick={() => setAsk("repropose")}
+              why={!latest ? h.why.gone : r.status === "approved" ? h.why.applied : r.status === "pending" && !stale ? h.why.stillPending : null} />
+            {r.status === "pending" && <Action icon={Undo2} label={h.withdraw} tone="quiet" className="ml-auto" onClick={() => setAsk("withdraw")} />}
           </>
-        )}
-        {correction && r.status === "approved" && r.applied_as && (
-          <button onClick={() => onNewVersion(r.applied_as!)} className={btnGhost}>
-            <ChevronRight className="size-3.5" />{h.openVersion}{versions.find((w) => w.id === r.applied_as) ? ` v${versions.find((w) => w.id === r.applied_as)!.version}` : ""}
-          </button>
         )}
       </div>
 
+      <Modal open={!!diff} wide title={diff ? h.diffTitle(diff.a.ref, diff.b.ref) : ""} onClose={() => setDiff(null)}>
+        {diff && <CompareBody data={diff} inputsTitle={h.diffInputs} onOpenCell={(c) => { setDiff(null); onOpenCell(c); }} />}
+      </Modal>
+      <ConfirmDialog open={ask === "repropose"} title={h.reproposeTitle(rec.ref, latestName ?? "?")} confirm={h.propose}
+        body={<>{h.reproposeBody(latestName ?? "?")}{changeList}</>}
+        note={{ placeholder: h.proposeReason, required: true, initial: reason ?? "" }} onClose={() => setAsk(null)}
+        onConfirm={async (note) => {
+          if (!latest) return;
+          const edits = Object.fromEntries(Object.entries(r.changes).map(([c, v]) => [c, asTyped(v)]));
+          const res = await api.propose(pid, { workbook: latest.id, edits, reason: note, by });
+          setMsg(h.proposed(res.ref)); onChanged();
+        }} />
       <ConfirmDialog open={ask === "approve"} title={h.approveTitle(rec.ref)} confirm={h.approve}
         body={<>{h.confirmApprove(nChanges)}{changeList}{latest && latest.id !== r.workbook && <p className="mt-2 text-amber-200">{h.onlyLatest}</p>}</>}
         note={{ placeholder: h.approveNote }} onClose={() => setAsk(null)}
@@ -1230,14 +1287,14 @@ function ComparePicker({ pid, base, records, fileIds, versionOf, onClose, onOpen
   );
 }
 
-function CompareBody({ data, onOpenCell }: { data: CompareResult; onOpenCell: (cell: string) => void }) {
+function CompareBody({ data, onOpenCell, inputsTitle }: { data: CompareResult; onOpenCell: (cell: string) => void; inputsTitle?: string }) {
   const { t } = useI18n();
   const h = t.twin.history;
   if (!data.inputs.length && !data.cells.length) return <p className="text-sm text-zinc-400">{h.sameAll}</p>;
   return (
     <div className="space-y-4 text-xs">
       {data.note && <p className="text-zinc-500">{data.note}</p>}
-      {[{ title: h.compareInputs, rows: data.inputs }, { title: h.compareCells(data.n_cells), rows: data.cells }].map(({ title, rows }) => rows.length > 0 && (
+      {[{ title: inputsTitle ?? h.compareInputs, rows: data.inputs }, { title: h.compareCells(data.n_cells), rows: data.cells }].map(({ title, rows }) => rows.length > 0 && (
         <div key={title}>
           <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">{title}</p>
           <div className="overflow-x-auto rounded-md border border-white/[0.07]">
@@ -1250,7 +1307,7 @@ function CompareBody({ data, onOpenCell }: { data: CompareResult; onOpenCell: (c
                     <td className={`${td} text-zinc-400`}><span className="block max-w-[12rem] truncate">{x.label}</span></td>
                     <td className={`${td} text-right tabular-nums text-zinc-200`}>{fmtValue(x.a)}</td>
                     <td className={`${td} text-right tabular-nums text-white`}>{fmtValue(x.b)}</td>
-                    <td className={`${td} text-right`}><Delta d={typeof x.a === "number" && typeof x.b === "number" ? x.b - x.a : null} /></td>
+                    <td className={`${td} text-right`}><Delta d={"delta" in x && typeof x.delta === "number" ? x.delta : typeof x.a === "number" && typeof x.b === "number" ? x.b - x.a : null} /></td>
                   </tr>
                 ))}
               </tbody>

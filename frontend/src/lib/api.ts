@@ -503,6 +503,8 @@ export const api = {
   reapply: (pid: string, ref: string, to: string, force: boolean, by?: string) =>
     call<{ reapplied: boolean; checks: { cell: string; ok: boolean; problem?: string }[]; record?: HistoryRecord }>(
       `/api/projects/${pid}/history/${ref}/reapply`, json({ to, force, by })),
+  /** An approved correction: the cells it changed and the results that differ between the two versions. */
+  correctionDiff: (pid: string, ref: string) => call<CompareResult>(`/api/projects/${pid}/history/${ref}/diff`),
   recordExportUrl: (pid: string, ref: string) => `${BASE}/api/projects/${pid}/history/${ref}/export`,
   propose: (pid: string, body: { workbook: string; edits?: Record<string, string>; from_scenario?: string; reason: string; by?: string }) =>
     call<HistoryRecord>(`/api/projects/${pid}/corrections`, json(body)),
